@@ -20,6 +20,9 @@ Outputs:
 import numpy as np
 import pandas as pd
 import TCM_funcs
+import copy
+import dm4bem
+import HeatConsumption
 
 def HC(PV_data):
 
@@ -59,6 +62,11 @@ def HC(PV_data):
             newRow = pd.DataFrame(np.array(fabric_info).reshape(1, numEl), columns=list(Fabric_types.columns))  # alter numpy array to collate with Fabric_type dataframe
             Fabric_types = Fabric_types.append(newRow, ignore_index=True)  # add data to Fabric_type dataframe.
 
+    data_types_Fabric_types = {'Name': str, 'id': str, 'Orientation': str, 'Adjacent': str, 'Material_1': str, 'Material_2': str, 'Material_3': str, 'Material_4': str, 'Material_5': str,
+                   'Thickness_1': float, 'Thickness_2': float, 'Thickness_3': float, 'Thickness_4': float, 'Thickness_5': float}
+
+    Fabric_types = Fabric_types.astype(data_types_Fabric_types)
+
     del U_values  # delete PHPP U-values sheet
 
     ## import elements from areas spreadsheet
@@ -86,6 +94,9 @@ def HC(PV_data):
             newRow = pd.DataFrame(np.array(element_info).reshape(1, numEl), columns=list(
                 Elements.columns))  # alter numpy array to collate with Fabric_type dataframe
             Elements = Elements.append(newRow, ignore_index=True)  # add data to Fabric_type dataframe.
+
+        data_types_Elements = {'Element Name': str, 'Fabric Type': str, 'Area':float, 'Azimuth': float, 'Slope': float}
+        Elements = Elements.astype(data_types_Elements)
 
     ## collate fabric type dataframe and elements dataframe into building characteristics dataframe
 
@@ -116,7 +127,7 @@ def HC(PV_data):
 
     win_cols = ['ID', 'Azimuth', 'Slope', 'Window Area', 'Glazing Area', 'U-value']  # column names for windorsky dataframe
 
-    WinDorSky = pd.DataFrame(columns=win_cols)  # create windorsky dataframe
+    WinSky = pd.DataFrame(columns=win_cols)  # create windorsky dataframe
 
     for i in range(22,202):
         c = Windows.at[i, 12]  # find ID for window
@@ -132,8 +143,10 @@ def HC(PV_data):
             window_info = [ID, azi, slope, w_area, g_area, U_install]  # collate data into list
             numEl = len(window_info)  # find length of list
             newRow = pd.DataFrame(np.array(window_info).reshape(1, numEl),
-                                  columns=list(WinDorSky.columns))  # alter numpy array to collate with Fabric_type dataframe
-            WinDorSky = WinDorSky.append(newRow, ignore_index=True)
+                                  columns=list(WinSky.columns))  # alter numpy array to collate with Fabric_type dataframe
+            WinSky = WinSky.append(newRow, ignore_index=True)
+
+    data_types_Windows = {'ID': str, 'Azimuth': float, 'Slope': float, 'Window Area': float, 'Glazing Area': float, 'U-value': float}
 
     ## add thermo physical properties of elements
 
@@ -145,12 +158,12 @@ def HC(PV_data):
 
     albedo_sur = 0.2
     latitude = 51
-    dt = 3600
+    dt = 720
     t_start = '2022-01-01 12:00:00'
     t_end = '2022-12-31 18:00:00'
 
     rad_surf_tot_bcp, t_bcp = TCM_funcs.rad(bcp, PV_data, albedo_sur, latitude, dt, t_start, t_end)
-    rad_surf_tot_wds, t_wds = TCM_funcs.rad(WinDorSky, PV_data, albedo_sur, latitude, dt, t_start, t_end)
+    rad_surf_tot_wds, t_wds = TCM_funcs.rad(WinSky, PV_data, albedo_sur, latitude, dt, t_start, t_end)
 
     ## create thermal circuits
     import Element_Types
@@ -162,18 +175,178 @@ def HC(PV_data):
     h_in = 10
     Qa = 100
     TCd.update({str(0): Element_Types.indoor_air(
-        WinDorSky, bcp, h_in, rad_surf_tot_bcp, Qa, V)})  # create thermal circuit diagram for indoor air
+        WinSky, bcp, h_in, rad_surf_tot_bcp, Qa, V)})  # create thermal circuit diagram for indoor air
 
     Verif = pd.read_excel('PHPP_EN_V10.3_Variants_Example.xlsm', sheet_name='Verification',
                             header=None, usecols='E:N')  # import verification data
-    Kpf = 500
-    V_dot = IA.loc[67, 13] / 3600
-    T_heating = int(Verif.loc[27, 10])
+    Kpf = 1500  # define controller sensitivity
+    V_dot = IA.loc[67, 13] / 3600  # volume flow rate in building, m3/s.
+    T_heating = int(Verif.loc[27, 10])  # temperature, C
     TCd.update({str(1): Element_Types.ventilation(
         Kpf, rad_surf_tot_bcp, V, V_dot, T_heating)})  # create thermal circuit diagram for ventilation
 
-    t = 1
-    H = 1
-    C = 1
+    uc = 2                                                                          # variable to track how many heat flows have been used
+    IG = np.zeros([rad_surf_tot_wds.shape[0], 1])                                    # set the radiation entering through windows to zero
+    tcd_n = 2
 
-    return H, C
+    for i in range(0, len(WinSky)):
+        TCd_i, IGR = Element_Types.window(WinSky.loc[i, :], rad_surf_tot_wds, i)
+        TCd.update({str(tcd_n): TCd_i})
+        IG = IG + IGR
+        tcd_n = tcd_n + 1
+
+    tcd_dorwinsky = tcd_n
+
+    h_out = 10  # outdoor heat convection coefficient
+
+    soil_rho = 1500  # density of soil  (kg/m3)
+    soil_con = 0.5  # conductivity of soil  (W/mK)
+    soil_T_depth = 4  # depth of soil at prescribed temperature  (m)
+    soil_cap = 1500  # specific heat capacity of soil (J/kgC)
+    T_ground = 15  # temperature of soil (C)
+
+    bcp = bcp.rename(columns={'Area': 'Surface'})
+
+    for i in range(0, len(bcp)):
+        if bcp['Orientation'][i] == '2-Wall':
+            if bcp['Material_5'][i] == 'nan':
+                if bcp['Material_4'][i] == 'nan':
+                    if bcp['Material_3'][i] == 'nan':
+                        if bcp['Material_2'][i] == 'nan':
+                            TCd_i, uca = Element_Types.Ex_Wall_1(bcp.loc[i, :], h_out,
+                                                                 rad_surf_tot_bcp, uc)
+                            TCd.update({str(tcd_n): TCd_i})
+                            tcd_n = tcd_n + 1
+                        else:
+                            TCd_i, uca = Element_Types.Ex_Wall_2(bcp.loc[i, :], h_out,
+                                                                 rad_surf_tot_bcp, uc)
+                            TCd.update({str(tcd_n): TCd_i})
+                            tcd_n = tcd_n + 1
+                    else:
+                        TCd_i, uca = Element_Types.Ex_Wall_3(bcp.loc[i, :], h_out,
+                                                             rad_surf_tot_bcp, uc)
+                        TCd.update({str(tcd_n): TCd_i})
+                        tcd_n = tcd_n + 1
+                else:
+                    TCd_i, uca = Element_Types.Ex_Wall_4(bcp.loc[i, :], h_out,
+                                                         rad_surf_tot_bcp, uc)
+                    TCd.update({str(tcd_n): TCd_i})
+                    tcd_n = tcd_n + 1
+            else:
+                TCd_i, uca = Element_Types.Ex_Wall_5(bcp.loc[i, :], h_out,
+                                                     rad_surf_tot_bcp, uc)
+                TCd.update({str(tcd_n): TCd_i})
+                tcd_n = tcd_n + 1
+        elif bcp['Orientation'][i] == '1-Roof':
+            if bcp['Material_5'][i] == 'nan':
+                if bcp['Material_4'][i] == 'nan':
+                    if bcp['Material_3'][i] == 'nan':
+                        if bcp['Material_2'][i] == 'nan':
+                            TCd_i, uca = Element_Types.Roof_1(bcp.loc[i, :], h_out,
+                                                                 rad_surf_tot_bcp, uc)
+                            TCd.update({str(tcd_n): TCd_i})
+                            tcd_n = tcd_n + 1
+                        else:
+                            TCd_i, uca = Element_Types.Roof_2(bcp.loc[i, :], h_out,
+                                                                 rad_surf_tot_bcp, uc)
+                            TCd.update({str(tcd_n): TCd_i})
+                            tcd_n = tcd_n + 1
+                    else:
+                        TCd_i, uca = Element_Types.Roof_3(bcp.loc[i, :], h_out,
+                                                          rad_surf_tot_bcp, uc)
+                        TCd.update({str(tcd_n): TCd_i})
+                        tcd_n = tcd_n + 1
+                else:
+                    TCd_i, uca = Element_Types.Roof_4(bcp.loc[i, :], h_out,
+                                                      rad_surf_tot_bcp, uc)
+                    TCd.update({str(tcd_n): TCd_i})
+                    tcd_n = tcd_n + 1
+            else:
+                TCd_i, uca = Element_Types.Roof_5(bcp.loc[i, :], h_out,
+                                                  rad_surf_tot_bcp, uc)
+                TCd.update({str(tcd_n): TCd_i})
+                tcd_n = tcd_n + 1
+        else:
+            if bcp['Material_5'][i] == 'nan':
+                if bcp['Material_4'][i] == 'nan':
+                    if bcp['Material_3'][i] == 'nan':
+                        if bcp['Material_2'][i] == 'nan':
+                            TCd_i = Element_Types.Floor_1(bcp.loc[i, :], soil_rho, soil_con,
+                                                               soil_T_depth, soil_cap, T_ground, rad_surf_tot_bcp)
+                            TCd.update({str(tcd_n): TCd_i})
+                            tcd_n = tcd_n + 1
+                        else:
+                            TCd_i = Element_Types.Floor_2(bcp.loc[i, :], soil_rho, soil_con,
+                                                               soil_T_depth, soil_cap, T_ground, rad_surf_tot_bcp)
+                            TCd.update({str(tcd_n): TCd_i})
+                            tcd_n = tcd_n + 1
+                    else:
+                        TCd_i = Element_Types.Floor_3(bcp.loc[i, :], soil_rho, soil_con,
+                                                      soil_T_depth, soil_cap, T_ground, rad_surf_tot_bcp)
+                        TCd.update({str(tcd_n): TCd_i})
+                        tcd_n = tcd_n + 1
+                else:
+                    TCd_i = Element_Types.Floor_4(bcp.loc[i, :], soil_rho, soil_con,
+                                                  soil_T_depth, soil_cap, T_ground, rad_surf_tot_bcp)
+                    TCd.update({str(tcd_n): TCd_i})
+                    tcd_n = tcd_n + 1
+            else:
+                TCd_i = Element_Types.Floor_5(bcp.loc[i, :], soil_rho, soil_con,
+                                              soil_T_depth, soil_cap, T_ground, rad_surf_tot_bcp)
+                TCd.update({str(tcd_n): TCd_i})
+                tcd_n = tcd_n + 1
+
+    IR_Surf = bcp.shape[0]
+    IG = IG / IR_Surf  # divide total indoor radiation by number of indoor surfaces
+    TCd_f = copy.deepcopy(TCd)
+
+    for i in range(0, len(bcp)):
+            TCd_i = TCM_funcs.indoor_rad(bcp.loc[i, :], TCd_f[str(tcd_dorwinsky + i)], IG)
+            TCd_f[str(tcd_dorwinsky + i)] = TCd_i
+
+    TCd_h = copy.deepcopy(TCd_f)
+    TCd_c = copy.deepcopy(TCd)
+
+    for i in range(0, len(bcp)):
+            TCd_i = TCM_funcs.indoor_rad_c(TCd_c[str(tcd_dorwinsky + i)])
+            TCd_c[str(tcd_dorwinsky + i)] = TCd_i
+
+    Kpc = 500
+    Kph = 500
+
+    TCd_c[str(1)] = Element_Types.ventilation(Kpc, rad_surf_tot_bcp, V, V_dot, T_heating)
+    TCd_h[str(1)] = Element_Types.ventilation(Kph, rad_surf_tot_bcp, V, V_dot, T_heating)
+
+    TCd_f = pd.DataFrame(TCd_f)
+    TCd_c = pd.DataFrame(TCd_c)
+    TCd_h = pd.DataFrame(TCd_h)
+
+    u, rad_surf_tot = TCM_funcs.u_assembly(TCd_f, rad_surf_tot_bcp)
+    u_c, rad_surf_tot = TCM_funcs.u_assembly_c(TCd_c, rad_surf_tot)
+    AssX = TCM_funcs.assembly(TCd_f, tcd_dorwinsky, tcd_n)
+
+    TCd_f = TCd_f.drop('Q')
+    TCd_f = TCd_f.drop('T')
+    TCd_c = TCd_c.drop('Q')
+    TCd_c = TCd_c.drop('T')
+    TCd_h = TCd_h.drop('Q')
+    TCd_h = TCd_h.drop('T')
+
+    TCd_f = pd.DataFrame.to_dict(TCd_f)
+    TCd_c = pd.DataFrame.to_dict(TCd_c)
+    TCd_h = pd.DataFrame.to_dict(TCd_h)
+
+    TCAf = dm4bem.TCAss(TCd_f, AssX)
+    TCAc = dm4bem.TCAss(TCd_c, AssX)
+    TCAh = dm4bem.TCAss(TCd_h, AssX)
+
+    DeltaT = 5
+    DeltaBlind = 2
+    qHVAC = TCM_funcs.solver(TCAf, TCAc, TCAh, dt, u, u_c, t_bcp, T_heating, DeltaT, DeltaBlind, Kpc, Kph, rad_surf_tot)
+
+    Q_cons_heat, Q_cons_cool, H, C = HeatConsumption.heat_cons(qHVAC, rad_surf_tot, dt)
+
+    print('Maximum building heat loss coefficient:', qHVAC_bc_max, 'W/K')
+    print('Maximum building heat loss:', Qmax, 'kW')
+
+    return H, C, Q_cons_cool, Q_cons_heat

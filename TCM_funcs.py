@@ -66,6 +66,10 @@ def thphprop(BCdf, mat):
 
     thphp = pd.read_excel(mat, header=0, usecols="A:H")
 
+    data_types_mat = {'Material': str, 'Density': float, 'Specific_Heat': float, 'Conductivity': float,
+                      'LW_Emissivity': float, 'SW_Transmittance': float, 'SW_Absorptivity': float,
+                      'Albedo': float}
+
     # add empty columns for thermo-physical properties
     BCdf = BCdf.reindex(columns=BCdf.columns.to_list() + ['rad_s', 'density_1', 'specific_heat_1', 'conductivity_1',
                                                           'LW_emissivity_1', 'SW_transmittance_1', 'SW_absorptivity_1',
@@ -163,7 +167,8 @@ def rad(bcp, PV_data, albedo_sur, latitude, dt, t_start, t_end):
     # Interpolate weather data for time step dt
     data = pd.concat([weather['temperature'], Φt], axis=1)
     data = data.astype(np.float32)
-    # data = data.resample(str(dt) + 'S').interpolate(method='linear')
+    dup = data[data.index.duplicated()]
+    data = data.resample(str(dt) + 'S').interpolate(method='linear')
     # data.info(memory_usage = "deep")
     # data = data.rename(columns={'temperature': 'To'})
 
@@ -213,7 +218,7 @@ def indoor_rad_c(TCd_c):
 
 def u_assembly(TCd, rad_surf_tot):
     rad_surf_tot = rad_surf_tot.loc[:, rad_surf_tot.any()]
-    u = np.empty((len(rad_surf_tot), 1))  # create u matrix
+    u = np.zeros((len(rad_surf_tot), 1))  # create u matrix
     u = u.astype(np.float32)
     for i in range(0, TCd.shape[1]):
         TCd_i = TCd[str(i)]
@@ -241,7 +246,7 @@ def u_assembly(TCd, rad_surf_tot):
 
 def u_assembly_c(TCd_c, rad_surf_tot):
     rad_surf_tot = rad_surf_tot.loc[:, rad_surf_tot.any()]
-    u_c = np.empty((len(rad_surf_tot), 1))  # create u matrix
+    u_c = np.zeros((len(rad_surf_tot), 1))  # create u matrix
     u_c = u_c.astype(np.float32)
     for i in range(0, TCd_c.shape[1]):
         TCd_i = TCd_c[str(i)]
@@ -310,7 +315,7 @@ def assembly(TCd, tcd_dorwinsky, tcd_n):
     return AssX
 
 
-def solver(TCAf, TCAc, TCAh, ip, u, u_c, t, Kpc, Kph, rad_surf_tot):
+def solver(TCAf, TCAc, TCAh, dt, u, u_c, t, Tisp, DeltaT, DeltaBlind, Kpc, Kph, rad_surf_tot):
     TCAf['A'] = TCAf['A'].astype(np.float32)
     TCAf['G'] = TCAf['G'].astype(np.float32)
     TCAf['b'] = TCAf['b'].astype(np.float32)
@@ -334,10 +339,6 @@ def solver(TCAf, TCAc, TCAh, ip, u, u_c, t, Kpc, Kph, rad_surf_tot):
     [Ah, Bh, Ch, Dh] = dm4bem.tc2ss(TCAh['A'], TCAh['G'], TCAh['b'], TCAh['C'], TCAh['f'], TCAh['y'])
 
     # define values from input tensor
-    dt = ip.loc['dt']['Value']
-    Tisp = ip.loc['Tisp']['Value']
-    DeltaT = ip.loc['T_cooling']['Value'] - Tisp
-    DeltaBlind = ip.loc['DeltaBlind']['Value']
 
     if DeltaBlind == -1:
         u_c = u
@@ -434,14 +435,14 @@ def solver(TCAf, TCAc, TCAh, ip, u, u_c, t, Kpc, Kph, rad_surf_tot):
 
     # plot indoor and outdoor temperature
     axs[0].plot(t / 3600, y, label='$T_{indoor}$')
-    axs[0].plot(t / 3600, rad_surf_tot['To'], label='$T_{outdoor}$')
+    axs[0].plot(t / 3600, rad_surf_tot['temperature'], label='$T_{outdoor}$')
     axs[0].set(xlabel='Time [h]',
                ylabel='Temperatures [°C]',
                title='Simulation for weather')
     axs[0].legend(loc='upper right')
 
     # plot total solar radiation and HVAC heat flow
-    del rad_surf_tot['To']
+    del rad_surf_tot['temperature']
     Φt = rad_surf_tot.sum(axis=1)
     axs[1].plot(t / 3600, qHVAC, label='$q_{HVAC}$')
     axs[1].plot(t / 3600, Φt, label='$Φ_{total}$')

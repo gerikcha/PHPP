@@ -113,7 +113,7 @@ def window(bcp_r, rad_surf_tot, i):
     A = np.array([[1, 0],
                   [-1, 1]])
 
-    G_win = bcp_r['U-Value'] * bcp_r['Surface']
+    G_win = float(bcp_r['U-value']) * float(bcp_r['Window Area'])
     G = np.diag(np.hstack([2 * G_win, 2 * G_win]))
 
     C = np.diag([0, 0])
@@ -122,62 +122,16 @@ def window(bcp_r, rad_surf_tot, i):
     y = np.array([0, 0])
 
     Q = np.zeros((rad_surf_tot.shape[0], nt))
-    IG_surface = bcp_r['Surface'] * rad_surf_tot.iloc[:, (i + 1)]
+    r_s_t = rad_surf_tot.iloc[:, (i + 1)]
+    IG_surface = float(bcp_r['Glazing Area']) * r_s_t
     IGR = np.zeros([rad_surf_tot.shape[0], 1])
-    IGR = IGR[:, 0] + (0.83 * bcp_r['Surface'] * rad_surf_tot.iloc[:, (i + 1)])
+    IGR = IGR[:, 0] + (0.83 * float(bcp_r['Glazing Area']) * rad_surf_tot.iloc[:, (i + 1)])
     IGR = np.array([IGR]).T
     Q[:, 0] = 0.1 * IG_surface
     Q[:, 1:nt] = 'NaN'
 
     T = np.zeros((rad_surf_tot.shape[0], nq))
-    T[:, 0] = rad_surf_tot['To']
-    T[:, 1:nq] = 'NaN'
-
-    A = A.astype(np.float32)
-    G = G.astype(np.float32)
-    C = C.astype(np.float32)
-    b = b.astype(np.float32)
-    f = f.astype(np.float32)
-    y = y.astype(np.float32)
-    Q = Q.astype(np.float32)
-    T = T.astype(np.float32)
-
-    TCd = {'A': A, 'G': G, 'b': b, 'C': C, 'f': f, 'y': y, 'Q': Q, 'T': T}
-
-    return TCd, IGR
-
-def skylight(bcp_r, rad_surf_tot, i):
-    """
-    Inputs:
-    bcp_r, building characteristics row.
-    rad_surf_tot, total radiation on the surface.
-
-    Outputs:
-    TCd, a dataframe of the A, G, C, b, f and y matrices for the window thermal circuit.
-    """
-    nq = 2
-    nt = 2
-
-    A = np.array([[1, 0],
-                  [-1, 1]])
-
-    G_win = bcp_r['U-Value'] * bcp_r['Surface']
-    G = np.diag(np.hstack([2 * G_win, 2 * G_win]))
-    C = np.diag([0, 0])
-    b = np.array([1, 0])
-    f = np.array([1, 0])
-    y = np.array([0, 0])
-
-    Q = np.zeros((rad_surf_tot.shape[0], nt))
-    IG_surface = bcp_r['Surface'] * rad_surf_tot.iloc[:, (i + 1)]
-    IGR = np.zeros([rad_surf_tot.shape[0], 1])
-    IGR = IGR[:, 0] + (0.83 * bcp_r['Surface'] * rad_surf_tot.iloc[:, (i + 1)])
-    IGR = np.array([IGR]).T
-    Q[:, 0] = 0.1 * IG_surface
-    Q[:, 1:nt] = 'NaN'
-
-    T = np.zeros((rad_surf_tot.shape[0], nq))
-    T[:, 0] = rad_surf_tot['To']
+    T[:, 0] = rad_surf_tot['temperature']
     T[:, 1:nq] = 'NaN'
 
     A = A.astype(np.float32)
@@ -236,7 +190,7 @@ def door(bcp_r, rad_surf_tot, i):
 
     return TCd
 
-def Ex_Wall_1(bcp_r, ip, rad_surf_tot, uc):
+def Ex_Wall_1(bcp_r, h_out, rad_surf_tot, uc):
     """
         Inputs:
         bcp_r, building characteristics row.
@@ -247,12 +201,12 @@ def Ex_Wall_1(bcp_r, ip, rad_surf_tot, uc):
         Outputs:
         TCd, a dataframe of the A, G, C, b, f and y matrices for the window thermal circuit.
         """
-    nt = 1 + 2 * int(bcp_r['Mesh_1']) # number of temperature nodes
-    nq = 1 + 2 * int(bcp_r['Mesh_1']) # number of heat flows
+    nt = 1 + 2 # number of temperature nodes
+    nq = 1 + 2 # number of heat flows
 
     # Conductivities
     G_1 = bcp_r['conductivity_1'] / bcp_r['Thickness_1'] * bcp_r['Surface']  # material 1 conductivity
-    G_out = ip.loc['h_out']['Value'] * bcp_r['Surface'] # outdoor convection conductivity
+    G_out = h_out * bcp_r['Surface'] # outdoor convection conductivity
 
     # Capacities
     C_1 = bcp_r['density_1'] * bcp_r['specific_heat_1'] * bcp_r['Surface'] * bcp_r['Thickness_1']
@@ -276,7 +230,7 @@ def Ex_Wall_1(bcp_r, ip, rad_surf_tot, uc):
 
     #temperature source matrice
     T = np.zeros((rad_surf_tot.shape[0], nq))
-    T[:, 0] = rad_surf_tot['To']
+    T[:, 0] = rad_surf_tot['temperature']
     T[:, 1:nq] = 'NaN'
 
     A = A.astype(np.float32)
@@ -292,7 +246,7 @@ def Ex_Wall_1(bcp_r, ip, rad_surf_tot, uc):
 
     return TCd, uca
 
-def Ex_Wall_2(bcp_r, ip, rad_surf_tot, uc):
+def Ex_Wall_2(bcp_r, h_out, rad_surf_tot, uc):
     """
         Inputs:
         bcp_r, building characteristics row.
@@ -303,13 +257,13 @@ def Ex_Wall_2(bcp_r, ip, rad_surf_tot, uc):
         Outputs:
         TCd, a dataframe of the A, G, C, b, f and y matrices for the window thermal circuit.
         """
-    nt = 1 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) # number of temperature nodes
-    nq = 1 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) # number of heat flows
+    nt = 1 + 4 # number of temperature nodes
+    nq = 1 + 4 # number of heat flows
 
     # Conductivities
     G_1 = bcp_r['conductivity_1'] / bcp_r['Thickness_1'] * bcp_r['Surface']  # material 1 conductivity
     G_2 = bcp_r['conductivity_2'] / bcp_r['Thickness_2'] * bcp_r['Surface']  # material 1 conductivity
-    G_out = ip.loc['h_out']['Value'] * bcp_r['Surface'] # outdoor convection conductivity
+    G_out = h_out * bcp_r['Surface']  # outdoor convection conductivity
 
     # Capacities
     C_1 = bcp_r['density_1'] * bcp_r['specific_heat_1'] * bcp_r['Surface'] * bcp_r['Thickness_1'] # material 1 capacity
@@ -336,7 +290,7 @@ def Ex_Wall_2(bcp_r, ip, rad_surf_tot, uc):
 
     #temperature source matrice
     T = np.zeros((rad_surf_tot.shape[0], nq))
-    T[:, 0] = rad_surf_tot['To']
+    T[:, 0] = rad_surf_tot['temperature']
     T[:, 1:nq] = 'NaN'
 
     A = A.astype(np.float32)
@@ -352,7 +306,7 @@ def Ex_Wall_2(bcp_r, ip, rad_surf_tot, uc):
 
     return TCd, uca
 
-def Ex_Wall_3(bcp_r, ip, rad_surf_tot, uc):
+def Ex_Wall_3(bcp_r, h_out, rad_surf_tot, uc):
     """
         Inputs:
         bcp_r, building characteristics row.
@@ -363,14 +317,14 @@ def Ex_Wall_3(bcp_r, ip, rad_surf_tot, uc):
         Outputs:
         TCd, a dataframe of the A, G, C, b, f and y matrices for the window thermal circuit.
         """
-    nt = 1 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) + 2 * int(bcp_r['Mesh_3'])# number of temperature nodes
-    nq = 1 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) + 2 * int(bcp_r['Mesh_3'])# number of heat flows
+    nt = 1 + 6 # number of temperature nodes
+    nq = 1 + 6 # number of heat flows
 
     # Conductivities
     G_1 = bcp_r['conductivity_1'] / bcp_r['Thickness_1'] * bcp_r['Surface']  # material 1 conductivity
     G_2 = bcp_r['conductivity_2'] / bcp_r['Thickness_2'] * bcp_r['Surface']  # material 2 conductivity
     G_3 = bcp_r['conductivity_3'] / bcp_r['Thickness_3'] * bcp_r['Surface']  # material 3 conductivity
-    G_out = ip.loc['h_out']['Value'] * bcp_r['Surface'] # outdoor convection conductivity
+    G_out = h_out * bcp_r['Surface'] # outdoor convection conductivity
 
     # Capacities
     C_1 = bcp_r['density_1'] * bcp_r['specific_heat_1'] * bcp_r['Surface'] * bcp_r['Thickness_1'] # material 1 capacity
@@ -400,7 +354,7 @@ def Ex_Wall_3(bcp_r, ip, rad_surf_tot, uc):
 
     #temperature source matrice
     T = np.zeros((rad_surf_tot.shape[0], nq))
-    T[:, 0] = rad_surf_tot['To']
+    T[:, 0] = rad_surf_tot['temperature']
     T[:, 1:nq] = 'NaN'
 
     A = A.astype(np.float32)
@@ -416,7 +370,7 @@ def Ex_Wall_3(bcp_r, ip, rad_surf_tot, uc):
 
     return TCd, uca
 
-def Ex_Wall_4(bcp_r, ip, rad_surf_tot, uc):
+def Ex_Wall_4(bcp_r, h_out, rad_surf_tot, uc):
     """
         Inputs:
         bcp_r, building characteristics row.
@@ -427,15 +381,15 @@ def Ex_Wall_4(bcp_r, ip, rad_surf_tot, uc):
         Outputs:
         TCd, a dataframe of the A, G, C, b, f and y matrices for the window thermal circuit.
         """
-    nt = 1 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) + 2 * int(bcp_r['Mesh_3']) + 2 * int(bcp_r['Mesh_4'])# number of temperature nodes
-    nq = 1 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) + 2 * int(bcp_r['Mesh_3']) + 2 * int(bcp_r['Mesh_4'])# number of heat flows
+    nt = 1 + 8  # number of temperature nodes
+    nq = 1 + 8  # number of heat flows
 
     # Conductivities
     G_1 = bcp_r['conductivity_1'] / bcp_r['Thickness_1'] * bcp_r['Surface']  # material 1 conductivity
     G_2 = bcp_r['conductivity_2'] / bcp_r['Thickness_2'] * bcp_r['Surface']  # material 2 conductivity
     G_3 = bcp_r['conductivity_3'] / bcp_r['Thickness_3'] * bcp_r['Surface']  # material 3 conductivity
     G_4 = bcp_r['conductivity_4'] / bcp_r['Thickness_4'] * bcp_r['Surface']  # material 4 conductivity
-    G_out = ip.loc['h_out']['Value'] * bcp_r['Surface'] # outdoor convection conductivity
+    G_out = h_out * bcp_r['Surface'] # outdoor convection conductivity
 
     # Capacities
     C_1 = bcp_r['density_1'] * bcp_r['specific_heat_1'] * bcp_r['Surface'] * bcp_r['Thickness_1'] # material 1 capacity
@@ -468,7 +422,7 @@ def Ex_Wall_4(bcp_r, ip, rad_surf_tot, uc):
 
     #temperature source matrice
     T = np.zeros((rad_surf_tot.shape[0], nq))
-    T[:, 0] = rad_surf_tot['To']
+    T[:, 0] = rad_surf_tot['temperature']
     T[:, 1:nq] = 'NaN'
 
     A = A.astype(np.float32)
@@ -484,7 +438,7 @@ def Ex_Wall_4(bcp_r, ip, rad_surf_tot, uc):
 
     return TCd, uca
 
-def Ex_Wall_5(bcp_r, ip, rad_surf_tot, uc):
+def Ex_Wall_5(bcp_r, h_out, rad_surf_tot, uc):
     """
         Inputs:
         bcp_r, building characteristics row.
@@ -495,8 +449,8 @@ def Ex_Wall_5(bcp_r, ip, rad_surf_tot, uc):
         Outputs:
         TCd, a dataframe of the A, G, C, b, f and y matrices for the window thermal circuit.
         """
-    nt = 1 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) + 2 * int(bcp_r['Mesh_3']) + 2 * int(bcp_r['Mesh_4']) + 2 * int(bcp_r['Mesh_5'])# number of temperature nodes
-    nq = 1 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) + 2 * int(bcp_r['Mesh_3']) + 2 * int(bcp_r['Mesh_4']) + 2 * int(bcp_r['Mesh_5'])# number of heat flows
+    nt = 1 + 10  # number of temperature nodes
+    nq = 1 + 10  # number of heat flows
 
     # Conductivities
     G_1 = bcp_r['conductivity_1'] / bcp_r['Thickness_1'] * bcp_r['Surface']  # material 1 conductivity
@@ -504,7 +458,7 @@ def Ex_Wall_5(bcp_r, ip, rad_surf_tot, uc):
     G_3 = bcp_r['conductivity_3'] / bcp_r['Thickness_3'] * bcp_r['Surface']  # material 3 conductivity
     G_4 = bcp_r['conductivity_4'] / bcp_r['Thickness_4'] * bcp_r['Surface']  # material 4 conductivity
     G_5 = bcp_r['conductivity_5'] / bcp_r['Thickness_5'] * bcp_r['Surface']  # material 5 conductivity
-    G_out = ip.loc['h_out']['Value'] * bcp_r['Surface'] # outdoor convection conductivity
+    G_out = h_out * bcp_r['Surface'] # outdoor convection conductivity
 
     # Capacities
     C_1 = bcp_r['density_1'] * bcp_r['specific_heat_1'] * bcp_r['Surface'] * bcp_r['Thickness_1'] # material 1 capacity
@@ -540,7 +494,7 @@ def Ex_Wall_5(bcp_r, ip, rad_surf_tot, uc):
 
     #temperature source matrice
     T = np.zeros((rad_surf_tot.shape[0], nq))
-    T[:, 0] = rad_surf_tot['To']
+    T[:, 0] = rad_surf_tot['temperature']
     T[:, 1:nq] = 'NaN'
 
     A = A.astype(np.float32)
@@ -556,7 +510,7 @@ def Ex_Wall_5(bcp_r, ip, rad_surf_tot, uc):
 
     return TCd, uca
 
-def Roof_1(bcp_r, ip, rad_surf_tot, uc):
+def Roof_1(bcp_r, h_out, rad_surf_tot, uc):
     """
         Inputs:
         bcp_r, building characteristics row.
@@ -567,12 +521,12 @@ def Roof_1(bcp_r, ip, rad_surf_tot, uc):
         Outputs:
         TCd, a dataframe of the A, G, C, b, f and y matrices for the window thermal circuit.
         """
-    nt = 1 + 2 * int(bcp_r['Mesh_1']) # number of temperature nodes
-    nq = 1 + 2 * int(bcp_r['Mesh_1']) # number of heat flows
+    nt = 1 + 2  # number of temperature nodes
+    nq = 1 + 2  # number of heat flows
 
     # Conductivities
     G_1 = bcp_r['conductivity_1'] / bcp_r['Thickness_1'] * bcp_r['Surface']  # material 1 conductivity
-    G_out = ip.loc['h_out']['Value'] * bcp_r['Surface'] # outdoor convection conductivity
+    G_out = h_out * bcp_r['Surface'] # outdoor convection conductivity
 
     # Matrices
     A = np.array([[1, 0, 0],
@@ -593,7 +547,7 @@ def Roof_1(bcp_r, ip, rad_surf_tot, uc):
 
     #temperature source matrice
     T = np.zeros((rad_surf_tot.shape[0], nq))
-    T[:, 0] = rad_surf_tot['To']
+    T[:, 0] = rad_surf_tot['temperature']
     T[:, 1:nq] = 'NaN'
 
     A = A.astype(np.float32)
@@ -609,7 +563,7 @@ def Roof_1(bcp_r, ip, rad_surf_tot, uc):
 
     return TCd, uca
 
-def Roof_2(bcp_r, ip, rad_surf_tot, uc):
+def Roof_2(bcp_r, h_out, rad_surf_tot, uc):
     """
         Inputs:
         bcp_r, building characteristics row.
@@ -620,13 +574,13 @@ def Roof_2(bcp_r, ip, rad_surf_tot, uc):
         Outputs:
         TCd, a dataframe of the A, G, C, b, f and y matrices for the window thermal circuit.
         """
-    nt = 1 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) # number of temperature nodes
-    nq = 1 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) # number of heat flows
+    nt = 1 + 4  # number of temperature nodes
+    nq = 1 + 4  # number of heat flows
 
     # Conductivities
     G_1 = bcp_r['conductivity_1'] / bcp_r['Thickness_1'] * bcp_r['Surface']  # material 1 conductivity
     G_2 = bcp_r['conductivity_2'] / bcp_r['Thickness_2'] * bcp_r['Surface']  # material 1 conductivity
-    G_out = ip.loc['h_out']['Value'] * bcp_r['Surface'] # outdoor convection conductivity
+    G_out = h_out * bcp_r['Surface'] # outdoor convection conductivity
 
     # Matrices
     A = np.array([[1, 0, 0, 0, 0],
@@ -649,7 +603,7 @@ def Roof_2(bcp_r, ip, rad_surf_tot, uc):
 
     #temperature source matrice
     T = np.zeros((rad_surf_tot.shape[0], nq))
-    T[:, 0] = rad_surf_tot['To']
+    T[:, 0] = rad_surf_tot['temperature']
     T[:, 1:nq] = 'NaN'
 
     A = A.astype(np.float32)
@@ -665,7 +619,7 @@ def Roof_2(bcp_r, ip, rad_surf_tot, uc):
 
     return TCd, uca
 
-def Roof_3(bcp_r, ip, rad_surf_tot, uc):
+def Roof_3(bcp_r, h_out, rad_surf_tot, uc):
     """
         Inputs:
         bcp_r, building characteristics row.
@@ -676,14 +630,14 @@ def Roof_3(bcp_r, ip, rad_surf_tot, uc):
         Outputs:
         TCd, a dataframe of the A, G, C, b, f and y matrices for the window thermal circuit.
         """
-    nt = 1 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) + 2 * int(bcp_r['Mesh_3'])# number of temperature nodes
-    nq = 1 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) + 2 * int(bcp_r['Mesh_3'])# number of heat flows
+    nt = 1 + 6  # number of temperature nodes
+    nq = 1 + 6  # number of heat flows
 
     # Conductivities
     G_1 = bcp_r['conductivity_1'] / bcp_r['Thickness_1'] * bcp_r['Surface']  # material 1 conductivity
     G_2 = bcp_r['conductivity_2'] / bcp_r['Thickness_2'] * bcp_r['Surface']  # material 2 conductivity
     G_3 = bcp_r['conductivity_3'] / bcp_r['Thickness_3'] * bcp_r['Surface']  # material 3 conductivity
-    G_out = ip.loc['h_out']['Value'] * bcp_r['Surface'] # outdoor convection conductivity
+    G_out = h_out * bcp_r['Surface'] # outdoor convection conductivity
 
     # Matrices
     A = np.array([[1, 0, 0, 0, 0, 0, 0],
@@ -708,7 +662,7 @@ def Roof_3(bcp_r, ip, rad_surf_tot, uc):
 
     #temperature source matrice
     T = np.zeros((rad_surf_tot.shape[0], nq))
-    T[:, 0] = rad_surf_tot['To']
+    T[:, 0] = rad_surf_tot['temperature']
     T[:, 1:nq] = 'NaN'
 
     A = A.astype(np.float32)
@@ -724,7 +678,7 @@ def Roof_3(bcp_r, ip, rad_surf_tot, uc):
 
     return TCd, uca
 
-def Roof_4(bcp_r, ip, rad_surf_tot, uc):
+def Roof_4(bcp_r, h_out, rad_surf_tot, uc):
     """
         Inputs:
         bcp_r, building characteristics row.
@@ -735,15 +689,15 @@ def Roof_4(bcp_r, ip, rad_surf_tot, uc):
         Outputs:
         TCd, a dataframe of the A, G, C, b, f and y matrices for the window thermal circuit.
         """
-    nt = 1 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) + 2 * int(bcp_r['Mesh_3']) + 2 * int(bcp_r['Mesh_4'])# number of temperature nodes
-    nq = 1 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) + 2 * int(bcp_r['Mesh_3']) + 2 * int(bcp_r['Mesh_4'])# number of heat flows
+    nt = 1 + 8  # number of temperature nodes
+    nq = 1 + 8  # number of heat flows
 
     # Conductivities
     G_1 = bcp_r['conductivity_1'] / bcp_r['Thickness_1'] * bcp_r['Surface']  # material 1 conductivity
     G_2 = bcp_r['conductivity_2'] / bcp_r['Thickness_2'] * bcp_r['Surface']  # material 2 conductivity
     G_3 = bcp_r['conductivity_3'] / bcp_r['Thickness_3'] * bcp_r['Surface']  # material 3 conductivity
     G_4 = bcp_r['conductivity_4'] / bcp_r['Thickness_4'] * bcp_r['Surface']  # material 4 conductivity
-    G_out = ip.loc['h_out']['Value'] * bcp_r['Surface'] # outdoor convection conductivity
+    G_out = h_out * bcp_r['Surface'] # outdoor convection conductivity
 
     # Matrices
     A = np.array([[1, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -770,7 +724,7 @@ def Roof_4(bcp_r, ip, rad_surf_tot, uc):
 
     #temperature source matrice
     T = np.zeros((rad_surf_tot.shape[0], nq))
-    T[:, 0] = rad_surf_tot['To']
+    T[:, 0] = rad_surf_tot['temperature']
     T[:, 1:nq] = 'NaN'
 
     A = A.astype(np.float32)
@@ -786,7 +740,7 @@ def Roof_4(bcp_r, ip, rad_surf_tot, uc):
 
     return TCd, uca
 
-def Roof_5(bcp_r, ip, rad_surf_tot, uc):
+def Roof_5(bcp_r, h_out, rad_surf_tot, uc):
     """
         Inputs:
         bcp_r, building characteristics row.
@@ -797,8 +751,8 @@ def Roof_5(bcp_r, ip, rad_surf_tot, uc):
         Outputs:
         TCd, a dataframe of the A, G, C, b, f and y matrices for the window thermal circuit.
         """
-    nt = 1 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) + 2 * int(bcp_r['Mesh_3']) + 2 * int(bcp_r['Mesh_4']) + 2 * int(bcp_r['Mesh_5'])# number of temperature nodes
-    nq = 1 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) + 2 * int(bcp_r['Mesh_3']) + 2 * int(bcp_r['Mesh_4']) + 2 * int(bcp_r['Mesh_5'])# number of heat flows
+    nt = 1 + 10  # number of temperature nodes
+    nq = 1 + 10  # number of heat flows
 
     # Conductivities
     G_1 = bcp_r['conductivity_1'] / bcp_r['Thickness_1'] * bcp_r['Surface']  # material 1 conductivity
@@ -806,7 +760,7 @@ def Roof_5(bcp_r, ip, rad_surf_tot, uc):
     G_3 = bcp_r['conductivity_3'] / bcp_r['Thickness_3'] * bcp_r['Surface']  # material 3 conductivity
     G_4 = bcp_r['conductivity_4'] / bcp_r['Thickness_4'] * bcp_r['Surface']  # material 4 conductivity
     G_5 = bcp_r['conductivity_5'] / bcp_r['Thickness_5'] * bcp_r['Surface']  # material 5 conductivity
-    G_out = ip.loc['h_out']['Value'] * bcp_r['Surface'] # outdoor convection conductivity
+    G_out = h_out * bcp_r['Surface'] # outdoor convection conductivity
 
     # Matrices
     A = np.array([[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -835,7 +789,7 @@ def Roof_5(bcp_r, ip, rad_surf_tot, uc):
 
     #temperature source matrice
     T = np.zeros((rad_surf_tot.shape[0], nq))
-    T[:, 0] = rad_surf_tot['To']
+    T[:, 0] = rad_surf_tot['temperature']
     T[:, 1:nq] = 'NaN'
 
     A = A.astype(np.float32)
@@ -851,7 +805,7 @@ def Roof_5(bcp_r, ip, rad_surf_tot, uc):
 
     return TCd, uca
 
-def Floor_1(bcp_r, ip, rad_surf_tot):
+def Floor_1(bcp_r, soil_rho, soil_con, soil_T_depth, soil_cap, T_ground, rad_surf_tot):
     """
         Inputs:
         bcp_r, building characteristics row.
@@ -862,15 +816,15 @@ def Floor_1(bcp_r, ip, rad_surf_tot):
         Outputs:
         TCd, a dataframe of the A, G, C, b, f and y matrices for the window thermal circuit.
         """
-    nt = 2 + 2 * int(bcp_r['Mesh_1']) # number of temperature nodes
-    nq = 2 + 2 * int(bcp_r['Mesh_1']) # number of heat flows
+    nt = 2 + 2  # number of temperature nodes
+    nq = 2 + 2  # number of heat flows
 
     # Conductivities
-    G_soil = ip.loc['Soil_con']['Value'] / ip.loc['Soil_T_depth']['Value'] * bcp_r['Surface']  # soil conductivity
+    G_soil = soil_con / soil_T_depth * bcp_r['Surface']  # soil conductivity
     G_1 = bcp_r['conductivity_1'] / bcp_r['Thickness_1'] * bcp_r['Surface']  # material 1 conductivity
 
     # Capacities
-    C_soil = ip.loc['Soil_rho']['Value'] * ip.loc['Soil_cap']['Value'] * bcp_r['Surface'] * ip.loc['Soil_T_depth']['Value'] # soil capacity
+    C_soil = soil_rho * soil_cap * bcp_r['Surface'] * soil_T_depth # soil capacity
     C_1 = bcp_r['density_1'] * bcp_r['specific_heat_1'] * bcp_r['Surface'] * bcp_r['Thickness_1'] # material 1 capacity
 
     # Matrices
@@ -891,7 +845,7 @@ def Floor_1(bcp_r, ip, rad_surf_tot):
 
     #temperature source matrice
     T = np.zeros((rad_surf_tot.shape[0], nq))
-    T[:, 0] = ip.loc['Tg']['Value']
+    T[:, 0] = T_ground
     T[:, 1:nq] = 'NaN'
 
     A = A.astype(np.float32)
@@ -907,7 +861,7 @@ def Floor_1(bcp_r, ip, rad_surf_tot):
 
     return TCd
 
-def Floor_2(bcp_r, ip, rad_surf_tot):
+def Floor_2(bcp_r, soil_rho, soil_con, soil_T_depth, soil_cap, T_ground, rad_surf_tot):
     """
         Inputs:
         bcp_r, building characteristics row.
@@ -918,18 +872,18 @@ def Floor_2(bcp_r, ip, rad_surf_tot):
         Outputs:
         TCd, a dataframe of the A, G, C, b, f and y matrices for the window thermal circuit.
         """
-    nt = 2 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) # number of temperature nodes
-    nq = 2 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) # number of heat flows
+    nt = 2 + 4  # number of temperature nodes
+    nq = 2 + 4  # number of heat flows
 
     # Conductivities
     G_1 = bcp_r['conductivity_1'] / bcp_r['Thickness_1'] * bcp_r['Surface']  # material 1 conductivity
     G_2 = bcp_r['conductivity_2'] / bcp_r['Thickness_2'] * bcp_r['Surface']  # material 2 conductivity
-    G_soil = ip.loc['Soil_con']['Value'] / ip.loc['Soil_T_depth']['Value'] * bcp_r['Surface']  # soil conductivity
+    G_soil = soil_con / soil_T_depth * bcp_r['Surface']  # soil conductivity
 
     # Capacities
     C_1 = bcp_r['density_1'] * bcp_r['specific_heat_1'] * bcp_r['Surface'] * bcp_r['Thickness_1'] # material 1 capacity
     C_2 = bcp_r['density_2'] * bcp_r['specific_heat_2'] * bcp_r['Surface'] * bcp_r['Thickness_2']  # material 1 capacity
-    C_soil = ip.loc['Soil_rho']['Value'] * ip.loc['Soil_cap']['Value'] * bcp_r['Surface'] * ip.loc['Soil_T_depth']['Value'] # soil capacity
+    C_soil = soil_rho * soil_cap * bcp_r['Surface'] * soil_T_depth  # soil capacity
 
     # Matrices
     A = np.array([[1, 0, 0, 0, 0, 0],
@@ -951,7 +905,7 @@ def Floor_2(bcp_r, ip, rad_surf_tot):
 
     #temperature source matrice
     T = np.zeros((rad_surf_tot.shape[0], nq))
-    T[:, 0] = ip.loc['Tg']['Value']
+    T[:, 0] = T_ground
     T[:, 1:nq] = 'NaN'
 
     A = A.astype(np.float32)
@@ -967,7 +921,7 @@ def Floor_2(bcp_r, ip, rad_surf_tot):
 
     return TCd
 
-def Floor_3(bcp_r, ip, rad_surf_tot):
+def Floor_3(bcp_r, soil_rho, soil_con, soil_T_depth, soil_cap, T_ground, rad_surf_tot):
     """
         Inputs:
         bcp_r, building characteristics row.
@@ -978,20 +932,20 @@ def Floor_3(bcp_r, ip, rad_surf_tot):
         Outputs:
         TCd, a dataframe of the A, G, C, b, f and y matrices for the window thermal circuit.
         """
-    nt = 2 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) + 2 * int(bcp_r['Mesh_3']) # number of temperature nodes
-    nq = 2 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) + 2 * int(bcp_r['Mesh_3']) # number of heat flows
+    nt = 2 + 6  # number of temperature nodes
+    nq = 2 + 6  # number of heat flows
 
     # Conductivities
     G_1 = bcp_r['conductivity_1'] / bcp_r['Thickness_1'] * bcp_r['Surface']  # material 1 conductivity
     G_2 = bcp_r['conductivity_2'] / bcp_r['Thickness_2'] * bcp_r['Surface']  # material 2 conductivity
     G_3 = bcp_r['conductivity_3'] / bcp_r['Thickness_3'] * bcp_r['Surface']  # material 3 conductivity
-    G_soil = ip.loc['Soil_con']['Value'] / ip.loc['Soil_T_depth']['Value'] * bcp_r['Surface']  # soil conductivity
+    G_soil = soil_con / soil_T_depth * bcp_r['Surface']  # soil conductivity
 
     # Capacities
     C_1 = bcp_r['density_1'] * bcp_r['specific_heat_1'] * bcp_r['Surface'] * bcp_r['Thickness_1'] # material 1 capacity
     C_2 = bcp_r['density_2'] * bcp_r['specific_heat_2'] * bcp_r['Surface'] * bcp_r['Thickness_2']  # material 1 capacity
     C_3 = bcp_r['density_3'] * bcp_r['specific_heat_3'] * bcp_r['Surface'] * bcp_r['Thickness_3']  # material 3 capacity
-    C_soil = ip.loc['Soil_rho']['Value'] * ip.loc['Soil_cap']['Value'] * bcp_r['Surface'] * ip.loc['Soil_T_depth']['Value'] # soil capacity
+    C_soil = soil_rho * soil_cap * bcp_r['Surface'] * soil_T_depth  # soil capacity
 
     # Matrices
     A = np.array([[1, 0, 0, 0, 0, 0, 0, 0],
@@ -1015,7 +969,7 @@ def Floor_3(bcp_r, ip, rad_surf_tot):
 
     #temperature source matrice
     T = np.zeros((rad_surf_tot.shape[0], nq))
-    T[:, 0] = ip.loc['Tg']['Value']
+    T[:, 0] = T_ground
     T[:, 1:nq] = 'NaN'
 
     A = A.astype(np.float32)
@@ -1031,7 +985,7 @@ def Floor_3(bcp_r, ip, rad_surf_tot):
 
     return TCd
 
-def Floor_4(bcp_r, ip, rad_surf_tot):
+def Floor_4(bcp_r, soil_rho, soil_con, soil_T_depth, soil_cap, T_ground, rad_surf_tot):
     """
         Inputs:
         bcp_r, building characteristics row.
@@ -1042,22 +996,22 @@ def Floor_4(bcp_r, ip, rad_surf_tot):
         Outputs:
         TCd, a dataframe of the A, G, C, b, f and y matrices for the window thermal circuit.
         """
-    nt = 2 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) + 2 * int(bcp_r['Mesh_3']) + 2 * int(bcp_r['Mesh_4']) # number of temperature nodes
-    nq = 2 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) + 2 * int(bcp_r['Mesh_3']) + 2 * int(bcp_r['Mesh_4']) # number of heat flows
+    nt = 2 + 8  # number of temperature nodes
+    nq = 2 + 8  # number of heat flows
 
     # Conductivities
     G_1 = bcp_r['conductivity_1'] / bcp_r['Thickness_1'] * bcp_r['Surface']  # material 1 conductivity
     G_2 = bcp_r['conductivity_2'] / bcp_r['Thickness_2'] * bcp_r['Surface']  # material 2 conductivity
     G_3 = bcp_r['conductivity_3'] / bcp_r['Thickness_3'] * bcp_r['Surface']  # material 3 conductivity
     G_4 = bcp_r['conductivity_4'] / bcp_r['Thickness_4'] * bcp_r['Surface']  # material 3 conductivity
-    G_soil = ip.loc['Soil_con']['Value'] / ip.loc['Soil_T_depth']['Value'] * bcp_r['Surface']  # soil conductivity
+    G_soil = soil_con / soil_T_depth * bcp_r['Surface']  # soil conductivity
 
     # Capacities
     C_1 = bcp_r['density_1'] * bcp_r['specific_heat_1'] * bcp_r['Surface'] * bcp_r['Thickness_1'] # material 1 capacity
     C_2 = bcp_r['density_2'] * bcp_r['specific_heat_2'] * bcp_r['Surface'] * bcp_r['Thickness_2']  # material 1 capacity
     C_3 = bcp_r['density_3'] * bcp_r['specific_heat_3'] * bcp_r['Surface'] * bcp_r['Thickness_3']  # material 3 capacity
     C_4 = bcp_r['density_4'] * bcp_r['specific_heat_4'] * bcp_r['Surface'] * bcp_r['Thickness_4']  # material 3 capacity
-    C_soil = ip.loc['Soil_rho']['Value'] * ip.loc['Soil_cap']['Value'] * bcp_r['Surface'] * ip.loc['Soil_T_depth']['Value'] # soil capacity
+    C_soil = soil_rho * soil_cap * bcp_r['Surface'] * soil_T_depth  # soil capacity
 
     # Matrices
     A = np.array([[1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -1083,7 +1037,7 @@ def Floor_4(bcp_r, ip, rad_surf_tot):
 
     #temperature source matrice
     T = np.zeros((rad_surf_tot.shape[0], nq))
-    T[:, 0] = ip.loc['Tg']['Value']
+    T[:, 0] = T_ground
     T[:, 1:nq] = 'NaN'
 
     A = A.astype(np.float32)
@@ -1099,7 +1053,7 @@ def Floor_4(bcp_r, ip, rad_surf_tot):
 
     return TCd
 
-def Floor_5(bcp_r, ip, rad_surf_tot):
+def Floor_5(bcp_r, soil_rho, soil_con, soil_T_depth, soil_cap, T_ground, rad_surf_tot):
     """
         Inputs:
         bcp_r, building characteristics row.
@@ -1110,8 +1064,8 @@ def Floor_5(bcp_r, ip, rad_surf_tot):
         Outputs:
         TCd, a dataframe of the A, G, C, b, f and y matrices for the window thermal circuit.
         """
-    nt = 2 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) + 2 * int(bcp_r['Mesh_3']) + 2 * int(bcp_r['Mesh_4']) + 2 * int(bcp_r['Mesh_5']) # number of temperature nodes
-    nq = 2 + 2 * int(bcp_r['Mesh_1']) + 2 * int(bcp_r['Mesh_2']) + 2 * int(bcp_r['Mesh_3']) + 2 * int(bcp_r['Mesh_4']) + 2 * int(bcp_r['Mesh_5']) # number of heat flows
+    nt = 2 + 10  # number of temperature nodes
+    nq = 2 + 10 # number of heat flows
 
     # Conductivities
     G_1 = bcp_r['conductivity_1'] / bcp_r['Thickness_1'] * bcp_r['Surface']  # material 1 conductivity
@@ -1119,7 +1073,7 @@ def Floor_5(bcp_r, ip, rad_surf_tot):
     G_3 = bcp_r['conductivity_3'] / bcp_r['Thickness_3'] * bcp_r['Surface']  # material 3 conductivity
     G_4 = bcp_r['conductivity_4'] / bcp_r['Thickness_4'] * bcp_r['Surface']  # material 4 conductivity
     G_5 = bcp_r['conductivity_5'] / bcp_r['Thickness_5'] * bcp_r['Surface']  # material 5 conductivity
-    G_soil = ip.loc['Soil_con']['Value'] / ip.loc['Soil_T_depth']['Value'] * bcp_r['Surface']  # soil conductivity
+    G_soil = soil_con / soil_T_depth * bcp_r['Surface']  # soil conductivity
 
     # Capacities
     C_1 = bcp_r['density_1'] * bcp_r['specific_heat_1'] * bcp_r['Surface'] * bcp_r['Thickness_1'] # material 1 capacity
@@ -1127,7 +1081,7 @@ def Floor_5(bcp_r, ip, rad_surf_tot):
     C_3 = bcp_r['density_3'] * bcp_r['specific_heat_3'] * bcp_r['Surface'] * bcp_r['Thickness_3']  # material 3 capacity
     C_4 = bcp_r['density_4'] * bcp_r['specific_heat_4'] * bcp_r['Surface'] * bcp_r['Thickness_4']  # material 3 capacity
     C_5 = bcp_r['density_5'] * bcp_r['specific_heat_5'] * bcp_r['Surface'] * bcp_r['Thickness_5']  # material 3 capacity
-    C_soil = ip.loc['Soil_rho']['Value'] * ip.loc['Soil_cap']['Value'] * bcp_r['Surface'] * ip.loc['Soil_T_depth']['Value'] # soil capacity
+    C_soil = soil_rho * soil_cap * bcp_r['Surface'] * soil_T_depth  # soil capacity
 
     # Matrices
     A = np.array([[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -1155,7 +1109,7 @@ def Floor_5(bcp_r, ip, rad_surf_tot):
 
     #temperature source matrice
     T = np.zeros((rad_surf_tot.shape[0], nq))
-    T[:, 0] = ip.loc['Tg']['Value']
+    T[:, 0] = T_ground
     T[:, 1:nq] = 'NaN'
 
     A = A.astype(np.float32)
