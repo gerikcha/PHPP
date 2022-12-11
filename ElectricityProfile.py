@@ -12,6 +12,7 @@ Outputs:
 
 import pandas as pd
 import numpy as np
+from datetime import datetime
 
 def EP(PV_data):
     ## import data from excel sheets
@@ -43,41 +44,53 @@ def EP(PV_data):
     day = day.day_name()  # determine day of the week from index date.
     E_p['Day of Week'] = day.tolist()  # add day of the week to E_p dataframe.
 
-    BL = np.ones((len(PV_data)), dtype=float) * bl  # convert base load float to series with length of PV_data.
+    Hour = E_p.index
+    Hour = Hour.strftime("%H:%M:%S")
+    Hour = Hour.to_numpy()
+    E_p['Hour'] = Hour.tolist()
 
+    BL = np.ones((len(PV_data)), dtype=float) * bl  # convert base load float to series with length of PV_data.
     E_p['Base Load'] = BL.tolist()  # add base load series to E_p dataframe.
 
-    ## create electricity profiles for variable appliances for a week
-    t_start = E_p[E_p['Day of Week'] == 'Monday'].index[0]  # find first monday in E_p dataframe
-    week = pd.date_range(t_start, periods=168, freq='H')  # create a datetime series for a whole week
+    ## create dataframes of appliance uses for each day.
 
-    App_powers_var = App_powers.loc[App_powers['Type'] == 'Variable'].reset_index(0)
-    del App_powers_var['index']
+    for i in range (1, len(Summer.columns), 5):
+        day = Summer[i][0]  # find day of the week
+        data = Summer.iloc[:, i:i+5]  # select data for specified day from Summer dataframe
+        data.insert(0, 'x', Summer.iloc[:, 0])
 
-    for i in range(3, len(App_powers_var)):
-        app = Summer[0][i]
-        app_row = App_powers_var.loc[App_powers_var['Appliance'] == app]  # select data from appliance name.
-        app_a_power = app_row['Active Power (W)'][0] / 1000  # appliance active power (kW).
-        app_s_power = app_row['Standby Power (W)'][0] / 1000  # appliance standby power (kW).
-        app_time_min = app_row['Use Time (min)'][0]  # use time in minutes.
-        app_time_hour = app_time_min / 60  # use time in hours.
-        
+        data = data.tail(-1)  # drop first row of dataframe
+        data = data.tail(-1)  # drop first row of dataframe
 
-        for j in range(1, 31, 5):
-            day = Summer[j][0]  # day of the week
-            t_night_1 = Summer[j][2]  # start time for first night section
-            morning = Summer[j+1][2]  # start time for morning
-            afternoon = Summer[j+2][2]  # start time for afternoon
-            evening = Summer[j+3][2]  # start time for evening
-            t_night_2 = Summer[j+4][2]  # start time for second night section
-            n_1_use = Summer[j][i]  # number of uses in nigh time 1 period
-            m_use = Summer[j+1][i]  # number of uses in morning period
-            a_use = Summer[j+2][i]  # number of uses in afternoon period
-            e_use = Summer[j+3][i]  # number of uses in evening period
-            n_2_use = Summer[j+4][i]  # number of uses in night time 2 period
+        data.set_index('x', inplace=True)  # set first column as row index.
 
-            #if n_1_use == 1:
+        exec(f'{day} = data')
 
+
+
+    ## create electricity profiles for variable appliances for the year
+
+    App_powers_var = App_powers.loc[App_powers['Type'] == 'Variable'].reset_index(0)  # extract variable appliances
+    del App_powers_var['index']  # delete index column.
+
+    for i in range(0, len(App_powers_var)):
+        app_name = App_powers_var['Appliance'][i]  # extract appliance name.
+        sb_power = App_powers_var['Standby Power (W)'][i]  # extract standby power (W).
+        sb_cons = sb_power / 1000  # calculate standby consumption (kWh).
+        E_p.insert(3+i, app_name, sb_cons)  # add standby consumption to electricity profile dataframe.
+
+    for i in range(0, len(E_p)):
+        E_hour = E_p['Hour'][i]
+        E_day = E_p['Day of Week'][i]
+
+        if E_day == 'Thursday':
+            Thurs_hours = Thursday.iloc['Time']
+            if E_hour == ():
+                t = 1
+            else:
+                break
+        else:
+            break
 
 
     E = 1  # electricity profile
