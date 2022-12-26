@@ -33,8 +33,5 @@ def heat_cons(qHVAC, rad_surf_tot, dt):
         else:
             qHVAC_cool[i] = qHVAC[i]
 
-    Q_cons_heat = np.sum(qHVAC_heat)  # total annual heat consumption
-    Q_cons_cool = np.sum(qHVAC_cool)  # total annual cooling consumption
 
-
-    return Q_cons_heat, Q_cons_cool, qHVAC_heat, qHVAC_cool
+    return qHVAC_heat, qHVAC_cool

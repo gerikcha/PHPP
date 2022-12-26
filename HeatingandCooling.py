@@ -344,9 +344,21 @@ def HC(PV_data):
     DeltaBlind = 2
     qHVAC = TCM_funcs.solver(TCAf, TCAc, TCAh, dt, u, u_c, t_bcp, T_heating, DeltaT, DeltaBlind, Kpc, Kph, rad_surf_tot)
 
-    Q_cons_heat, Q_cons_cool, H, C = HeatConsumption.heat_cons(qHVAC, rad_surf_tot, dt)
+    H, C = HeatConsumption.heat_cons(qHVAC, rad_surf_tot, dt)
 
-    print('Maximum building heat loss coefficient:', qHVAC_bc_max, 'W/K')
-    print('Maximum building heat loss:', Qmax, 'kW')
+    len_diff = len(PV_data) - len(H)
 
-    return H, C, Q_cons_cool, Q_cons_heat
+    PV_data = PV_data[len_diff:]
+
+    HC = pd.DataFrame(index=PV_data.index)
+
+    HC['Heating (kWh)'] = H.tolist()
+
+    HC['Cooling (kWh)'] = C.tolist()
+
+    HC.to_csv('Heating and Cooling.csv')
+
+    # print('Maximum building heat loss coefficient:', qHVAC_bc_max, 'W/K')
+    # print('Maximum building heat loss:', Qmax, 'kW')
+
+    return HC
