@@ -123,7 +123,7 @@ def PV_ST():
             ST = Qu / 3600000  # solar thermal energy, kWh
             ST[ST < 0] = 0
 
-            S[str(i+1)] = np.array(ST)
+            S[str(i)] = np.array(ST)
         else:
             Fr = 0
             Qu = Ac[i] * Fr * (np.array(PV_data['S']) - (U_l * dT))

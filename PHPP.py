@@ -37,9 +37,10 @@ else:
 import ElectricityProfile
 
 Gen = 'N'  # generate electricity profile? 'Y' = yes, 'N' = no
+HP = 'Y'  # include heat pump in electricity profile?
 
 if Gen == 'Y':
-    E = ElectricityProfile.EP(PV)
+    E = ElectricityProfile.EP(PV, HP, HC)
 
 else:
     E = pd.read_csv('Electricity.csv', index_col=['local_time'])
@@ -47,17 +48,28 @@ else:
 ## Generate Domestic Hot Water (DHW) consumption profile
 import DomesticHotWater
 
-h_w_p = 60  # hot water demand per person (litres)
-n_p = 2  # number of people
-reheat_t = 6  # reheat time (hours)
-T_inlet = 4  # water inlet temperature (C)
-T_outlet = 55  # water outlet temperature (C)
-t_start = '10:00:00'
+T_inlet = 10  # water inlet temperature (C)
+T_outlet = 60  # water outlet temperature (C)
 
-DHW, d_dhw_consumption = DomesticHotWater.DoHoWa(PV, h_w_p, n_p, reheat_t, t_start, T_inlet, T_outlet)
+Gen = 'N'  # generate electricity profile? 'Y' = yes, 'N' = no
+
+if Gen == 'Y':
+    DHW = DomesticHotWater.DoHoWa(PV, T_inlet, T_outlet)
+
+else:
+    DHW = pd.read_csv('Domestic Hot Water.csv', index_col=['local_time'])
 
 ## Optimisation model
+import Optimisation
 
+B_cap = 24  # battery storage capacity (kWh)
+B_charge = 4.5  # battery charging power (kW)
+B_discharge = 5  # battery discharging power (kW)
+
+T_stor_size = 500  # size of thermal storage (Litres)
+T_stor_leak = 0.6  # thermal leakage from tank (kWh)
+
+PS = Optimisation.Optimiz(HC, E, DHW, ST, PV, B_cap, B_charge, B_discharge, T_stor_size, T_stor_leak, T_inlet, T_outlet)
 
 
 t = 1

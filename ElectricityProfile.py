@@ -15,7 +15,7 @@ import numpy as np
 from datetime import datetime
 import random
 
-def EP(PV_data):
+def EP(PV_data, HP, HC):
     ## import data from excel sheets
 
     App_powers = pd.read_excel('Electricity.xlsx',
@@ -24,8 +24,8 @@ def EP(PV_data):
     Summer = pd.read_excel('Electricity.xlsx',
                              sheet_name='Summer', header=None, usecols='A:AJ')  # import appliance summer timings and frequency of use.
 
-    Winter = pd.read_excel('Electricity.xlsx',
-                             sheet_name='Winter', header=None, usecols='A:AJ')  # import appliance winter timings and frequency of use.
+    #Winter = pd.read_excel('Electricity.xlsx',
+    #                         sheet_name='Winter', header=None, usecols='A:AJ')  # import appliance winter timings and frequency of use.
 
     ## calculate baseload for consumption profile
 
@@ -52,6 +52,36 @@ def EP(PV_data):
 
     BL = np.ones((len(PV_data)), dtype=float) * bl  # convert base load float to series with length of PV_data.
     E_p['Base Load'] = BL.tolist()  # add base load series to E_p dataframe.
+
+    ## create heat pump load
+
+
+    if HP == 'Y':
+        COP_LU = pd.read_excel('Electricity.xlsx',
+                                   sheet_name='Heat Pump', usecols='A:B')  # import appliance data
+        data_types_COP_LU = {'Temperature': float, 'COP': float}
+        COP_LU = COP_LU.astype(data_types_COP_LU)
+
+        from scipy.interpolate import interp1d
+        T = np.array(COP_LU['Temperature'])
+        COP = np.array(COP_LU['COP'])
+
+        COP_interp = interp1d(T, COP)
+
+        HP = np.zeros((len(PV_data)), dtype=float)  # create zero heat pump load series.
+
+        for i in range(0, len(PV_data)):
+            if PV_data['temperature'][i] <= T[-1]:
+                T_step = PV_data['temperature'][i]
+                HP[i] = HC['Heating (kWh)'][i] / COP_interp(T_step)
+
+            else:
+                HP[i] = HP[i]
+
+    else:
+        HP = np.zeros((len(PV_data)), dtype=float)  # create zero heat pump load series.
+
+    E_p['Heat Pump'] = HP.tolist()  # add heat pump load series to E_p dataframe.
 
     ## create dataframes of appliance uses for each day.
 
@@ -398,13 +428,13 @@ def EP(PV_data):
                     else:
                         E_p[app][i] = E_p[app][i]
             else:
-                E_p[app][i] = E_p[app][i]
+                E_p['Base Load'][i] = E_p['Base Load'][i]
         else:
             E_p['Base Load'][i] = E_p['Base Load'][i]
 
     E_p['Variable Load (kWh)'] = E_p[list(App_powers_var['Appliance'][:])].sum(axis=1)
 
-    E = E_p[['Base Load', 'Variable Load (kWh)']].sum(axis=1)  # electricity profile
+    E = E_p[['Base Load', 'Variable Load (kWh)', 'Heat Pump']].sum(axis=1)  # electricity profile
 
     E.to_csv('Electricity.csv')
 
