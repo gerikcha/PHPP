@@ -10,7 +10,7 @@ Date: 4th October 2022
 ## Determine roof PV and ST orientation possibilities and generation
 import PV_ST_Orientatiosn
 
-ST, PV = PV_ST_Orientatiosn.PV_ST()
+ST, PV, ST_A, PV_Cap = PV_ST_Orientatiosn.PV_ST()
 
 
 ## Determine heat and cooling loads and annual hourly profile
@@ -62,14 +62,15 @@ else:
 ## Optimisation model
 import Optimisation
 
-B_cap = 24  # battery storage capacity (kWh)
-B_charge = 4.5  # battery charging power (kW)
-B_discharge = 5  # battery discharging power (kW)
+B_cap = 3.5  # battery storage capacity (kWh)
+B_charge = 1.5  # battery charging power (kW)
+B_discharge = 2  # battery discharging power (kW)
 
 T_stor_size = 500  # size of thermal storage (Litres)
 T_stor_leak = 0.6  # thermal leakage from tank (kWh)
 
-PS = Optimisation.Optimiz(HC, E, DHW, ST, PV, B_cap, B_charge, B_discharge, T_stor_size, T_stor_leak, T_inlet, T_outlet)
+PS = Optimisation.Optimiz(HC, E, DHW, ST, PV, B_cap, B_charge, B_discharge,
+                          T_stor_size, T_stor_leak, T_inlet, T_outlet, ST_A, PV_Cap)
 
 
 t = 1

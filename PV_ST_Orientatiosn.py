@@ -141,4 +141,4 @@ def PV_ST():
     # plt.plot(PV_data.index.values, S[:, 1])
     # plt.show()
 
-    return S, PV_data
+    return S, PV_data, Ac, pv_cap_tot
