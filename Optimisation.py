@@ -34,10 +34,10 @@ def Optimiz(HC, E , DHW, ST, PV, B_cap, B_charge, B_discharge, T_stor_size, T_st
 
     n_years = Gen['Input']['Number of Years']  # number of years for analysis.
     pv_deg = Gen['Input']['Solar Degradation (%/year)']  # solar degradation per year.
-    d_rate = Gen['Input']['Discount Rate (%)']  # discount rate.
+    d_rate = Gen['Input']['Discount Rate (%)'] / 100  # discount rate.
 
     ## define results dataframe
-    results_cols = ['PV (kW)', 'ST (m2)', 'IRR (%)', 'NPV (k £)', 'Imported Electricity (kWh)',
+    results_cols = ['PV (kW)', 'ST (m2)', 'IRR (%)', 'NPV (£ 000s)', 'Imported Electricity (kWh)',
                     'Exported Electricity (kWh)', 'Annual Running Cost (£)', 'Capital Cost (£)',
                     'CO2e Savings (kg)', 'ST Waste (kWh)']  # create column names for results dataframe
     Results = pd.DataFrame(columns=results_cols)  # create dataframe with column names
@@ -320,15 +320,16 @@ def Optimiz(HC, E , DHW, ST, PV, B_cap, B_charge, B_discharge, T_stor_size, T_st
 
         Cash_flow = ARC_base - Ann_cost
 
-        PV_iteration = PV_Cap[j]
-        ST_iteration = ST_A[j]
+        PV_iteration = round(PV_Cap[j], 2)
+        ST_iteration = round(ST_A[j], 2)
 
         if PV_iteration > 0:
             for a in range(0, len(PV_Price)):
-                min = PV_Price['Minimum'][a]
-                max = PV_Price['Maximum'][a]
-                if PV_iteration in range(min, max):
+                min = float(PV_Price['Minimum'][a])
+                max = float(PV_Price['Maximum'][a])
+                if min <= PV_iteration <= max:
                     PV_cost = PV_iteration * PV_Price['Cost (£/kWp)'][a]
+                    break
                 else:
                     PV_iteration = PV_iteration
         else:
@@ -336,9 +337,9 @@ def Optimiz(HC, E , DHW, ST, PV, B_cap, B_charge, B_discharge, T_stor_size, T_st
 
         if ST_iteration > 0:
             for a in range(0, len(ST_Price)):
-                min = ST_Price['Minimum'][a]
-                max = ST_Price['Maximum'][a]
-                if ST_iteration in range(min, max):
+                min = float(ST_Price['Minimum'][a])
+                max = float(ST_Price['Maximum'][a])
+                if min <= ST_iteration <= max:
                     ST_cost = ST_iteration * ST_Price['Cost (£/m2)'][a]
                     break
                 else:
@@ -353,10 +354,10 @@ def Optimiz(HC, E , DHW, ST, PV, B_cap, B_charge, B_discharge, T_stor_size, T_st
         CC = PV_cost + ST_cost  # capital cost of installing renewables.
         Cash_flow[0] = Cash_flow[0] - CC  # subtract capital cost from first year of cash flow.
 
-        IRR = round(npf.irr(Cash_flow), 2)
-        NPV = 0
+        IRR = round((npf.irr(Cash_flow) * 100), 2)  # calculate IRR (%)
+        NPV = round((npf.npv(d_rate, Cash_flow) / 1000), 3)  # calculate NPV (£ 000's)
 
-        CO2 = (Energy_sum - GIE_tot) * Fuel['CO2e Emissions (kgCO2e/kWh)']['Grid Electricity']
+        CO2 = (Energy_sum - GIE_years[0]) * Fuel['CO2e Emissions (kgCO2e/kWh)']['Grid Electricity']
 
 
 

@@ -69,7 +69,7 @@ B_discharge = 2  # battery discharging power (kW)
 T_stor_size = 500  # size of thermal storage (Litres)
 T_stor_leak = 0.6  # thermal leakage from tank (kWh)
 
-PS = Optimisation.Optimiz(HC, E, DHW, ST, PV, B_cap, B_charge, B_discharge,
+Results = Optimisation.Optimiz(HC, E, DHW, ST, PV, B_cap, B_charge, B_discharge,
                           T_stor_size, T_stor_leak, T_inlet, T_outlet, ST_A, PV_Cap)
 
 
