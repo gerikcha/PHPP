@@ -19,7 +19,7 @@ import pandas as pd
 import numpy_financial as npf
 
 
-def Optimiz(HC, E , DHW, ST, PV, B_cap, B_charge, B_discharge, T_stor_size, T_stor_leak, T_inlet, T_outlet, ST_A, PV_Cap):
+def Optimiz(HC, E , DHW, ST, PV, B_cap, B_charge, B_discharge, TS_size, TS_leak, T_inlet, T_outlet, ST_A, PV_Cap):
 
     ## import additional information from excel spreadsheets
     Fuel = pd.read_excel('Financials.xlsx', sheet_name='Fuel', usecols='A:E', index_col=0)  # import fuel data
@@ -81,7 +81,7 @@ def Optimiz(HC, E , DHW, ST, PV, B_cap, B_charge, B_discharge, T_stor_size, T_st
             TS_SOC = np.zeros((len(PV) + 1), dtype=float)  # thermal storage state of charge (kWh)
             ST_waste = np.zeros((len(PV)), dtype=float)  # wasted solar thermal generation (kWh)
 
-            TS_max = (4.2 * (T_outlet - T_inlet) * T_stor_size) * (1 / 3600)  # maximum storage size of hot water tank (kWh)
+            TS_max = (4.2 * (T_outlet - T_inlet) * TS_size) * (1 / 3600)  # maximum storage size of hot water tank (kWh)
 
             TS_SOC[0] = (TS_max / 4)  # set initial hot water capacity to half of maximum storage (kWh).
 
@@ -199,6 +199,10 @@ def Optimiz(HC, E , DHW, ST, PV, B_cap, B_charge, B_discharge, T_stor_size, T_st
                 else:
                     print('something wrong with the DHW for this time step bro')
                     raise ValueError
+
+                TS_Litre_step = (3600 * TS_SOC[i+1]) / (4.2 * (T_outlet - T_inlet))  # determine litres of hot water in thermal storage (litres)
+                TS_leak_kWh = (TS_leak * TS_Litre_step) / 1000  # energy leakage from hot water tank (kWh)
+                TS_SOC[i+1] = TS_SOC[i+1] - TS_leak_kWh  # reduce thermal store state by the energy leakage (kWh).
 
                 ## determine how to meet E demand and the imported and exported electricity.
 

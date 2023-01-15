@@ -38,9 +38,10 @@ import ElectricityProfile
 
 Gen = 'N'  # generate electricity profile? 'Y' = yes, 'N' = no
 HP = 'Y'  # include heat pump in electricity profile?
+HP_C_SCOP = 2  # coefficient of performance of heat pump in cooling mode.
 
 if Gen == 'Y':
-    E = ElectricityProfile.EP(PV, HP, HC)
+    E = ElectricityProfile.EP(PV, HP, HC, HP_C_SCOP)
 
 else:
     E = pd.read_csv('Electricity.csv', index_col=['local_time'])
@@ -66,11 +67,11 @@ B_cap = 3.5  # battery storage capacity (kWh)
 B_charge = 1.5  # battery charging power (kW)
 B_discharge = 2  # battery discharging power (kW)
 
-T_stor_size = 500  # size of thermal storage (Litres)
-T_stor_leak = 0.6  # thermal leakage from tank (kWh)
+TS_size = 500  # size of thermal storage (Litres)
+TS_leak = 0.21  # thermal leakage from tank (W/litre)
 
 Results = Optimisation.Optimiz(HC, E, DHW, ST, PV, B_cap, B_charge, B_discharge,
-                          T_stor_size, T_stor_leak, T_inlet, T_outlet, ST_A, PV_Cap)
+                                TS_size, TS_leak, T_inlet, T_outlet, ST_A, PV_Cap)
 
 
 t = 1

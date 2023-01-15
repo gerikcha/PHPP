@@ -15,7 +15,7 @@ import numpy as np
 from datetime import datetime
 import random
 
-def EP(PV_data, HP, HC):
+def EP(PV_data, HP, HC, HP_C_SCOP):
     ## import data from excel sheets
 
     App_powers = pd.read_excel('Electricity.xlsx',
@@ -74,7 +74,11 @@ def EP(PV_data, HP, HC):
             if PV_data['temperature'][i] <= T[-1]:
                 T_step = PV_data['temperature'][i]
                 HP[i] = HC['Heating (kWh)'][i] / COP_interp(T_step)
-
+                HP_Cool = abs(HC['Cooling (kWh)'][i])
+                if HP_Cool > 0:
+                    HP[i] = HP[i] + (HP_Cool / HP_C_SCOP)
+                else:
+                    HP[i] = HP[i]
             else:
                 HP[i] = HP[i]
 
