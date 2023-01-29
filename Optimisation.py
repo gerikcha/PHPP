@@ -1,25 +1,31 @@
 """
-Code to calculate the pareto set for the objective functions.
+Code to calculate the results for each permutation for the objective functions.
 
 Inputs:
-    - HC, heating and cooling demand profiles.
     - E, electricity demand profile.
     - DHW, domestic hot water demand profile.
     - S, solar thermal generation profile.
     - PV, PV solar generation profile.
     - battery_cap, Battery capacity (kWh).
-    - battery_power, Battery charge/discharge power (kW)
+    - battery_power, Battery charge/discharge power (kW).
+    - TS_size, size of hot water cylinder (L).
+    - TS_leak, thermal leakage of hot water cylinder (W/L).
+    - T_inlet, inlet temperature of water for DHW (C).
+    - T_outlet, outlet temperature of water for DHW (C).
+    - ST_A, dataframe of the different sizes of solar thermal collector arrays (m^2).
+    - PV_Cap, dataframe of the different capacities of the PV solar installations (kWp).
 
 Outputs:
-    - Pareto Set DataFrame
+    - Dataframe containing the results of every permutation.
 
+Author: C.Gerike-ROberts 26th January 2023.
 """
 import numpy as np
 import pandas as pd
 import numpy_financial as npf
 
 
-def Optimiz(HC, E , DHW, ST, PV, B_cap, B_charge, B_discharge, TS_size, TS_leak, T_inlet, T_outlet, ST_A, PV_Cap):
+def Optimiz(E , DHW, ST, PV, B_cap, B_charge, B_discharge, TS_size, TS_leak, T_inlet, T_outlet, ST_A, PV_Cap):
 
     ## import additional information from excel spreadsheets
     Fuel = pd.read_excel('Financials.xlsx', sheet_name='Fuel', usecols='A:E', index_col=0)  # import fuel data
@@ -33,13 +39,14 @@ def Optimiz(HC, E , DHW, ST, PV, B_cap, B_charge, B_discharge, TS_size, TS_leak,
     ## assign variables from imported excel sheets
 
     n_years = Gen['Input']['Number of Years']  # number of years for analysis.
-    pv_deg = Gen['Input']['Solar Degradation (%/year)']  # solar degradation per year.
+    pv_deg = Gen['Input']['PV Degradation (%/year)']  # pv degradation per year.
+    st_deg = Gen['Input']['PV Degradation (%/year)']  # st degradation per year.
     d_rate = Gen['Input']['Discount Rate (%)'] / 100  # discount rate.
 
     ## define results dataframe
-    results_cols = ['PV (kW)', 'ST (m2)', 'IRR (%)', 'NPV (£ 000s)', 'Imported Electricity (kWh)',
-                    'Exported Electricity (kWh)', 'Annual Running Cost (£)', 'Capital Cost (£)',
-                    'CO2e Savings (kg)', 'ST Waste (kWh)']  # create column names for results dataframe
+    results_cols = ['PV (kW)', 'ST (m2)', 'IRR (%)', 'NPV (£ 000s)', 'IE (kWh)', 'PV (kWh)',
+                    'GE (kWh)', 'ARC (£)', 'CC (£)',
+                    'CO2e Emissions (kg)', 'ST Waste (kWh)']  # create column names for results dataframe
     Results = pd.DataFrame(columns=results_cols)  # create dataframe with column names
 
     ## find results for base scenario with no renewable technology
@@ -48,15 +55,16 @@ def Optimiz(HC, E , DHW, ST, PV, B_cap, B_charge, B_discharge, TS_size, TS_leak,
     Energy_sum = E_sum[0] + DHW_sum[0]
     PV_cap = 0
     ST_a = 0
+    PV_gen = 0
     Exp_E = 0
-    IRR = 'N'
-    NPV = 'N'
+    IRR = 0
+    NPV = 0
     ARC_base = Energy_sum * (Fuel['Import Price (£/kWh)']['Grid Electricity'] + Fuel['CCL (£/kWh)']['Grid Electricity'])
-    CC = 'N'
-    CO2 = 0
-    ST_waste_base = 'N'
+    CC = 0
+    CO2 = Energy_sum * Fuel['CO2e Emissions (kgCO2e/kWh)']['Grid Electricity']
+    ST_waste_base = 0
 
-    base_results = [PV_cap, ST_a, IRR, NPV, Energy_sum, Exp_E, ARC_base, CC, CO2, ST_waste_base]  # collate data into list
+    base_results = [PV_cap, ST_a, IRR, NPV, Energy_sum, PV_gen, Exp_E, ARC_base, CC, CO2, ST_waste_base]  # collate data into list
     numEl = len(base_results)  # find length of list
     newRow = pd.DataFrame(np.array(base_results).reshape(1, numEl),
                           columns=list(Results.columns))  # alter numpy array to collate with Fabric_type dataframe
@@ -97,6 +105,108 @@ def Optimiz(HC, E , DHW, ST, PV, B_cap, B_charge, B_discharge, TS_size, TS_leak,
 
                 PV_step_r = 'x'  # initialise remaining PV production to zero.
 
+                ## determine how to meet E demand and the imported and exported electricity.
+
+                if E_step > 0:  # if electricity demand is greater than zero.
+                    if PV_step > 0:  # if pv production is greater than zero.
+                        if PV_step >= E_step:  # if pv production is greater or equal to electricity demand.
+                            PV_step_r = PV_step - E_step  # subtract electric demand to get remaining pv generation.
+                            E_step_r = 0  # electricity demand has been met with pv generation.
+                            if B_SOC[i] < B_cap:  # if battery state of charge is lower than battery maximum capacity.
+                                if (B_cap - B_SOC[i]) > B_charge:  # if remaining capacity is greater than the battery charging power.
+                                    if PV_step_r <= B_charge:  # if remaining PV generation is less than or equal to the battery charging power.
+                                        B_SOC[i + 1] = B_SOC[i] + PV_step_r  # add PV generation to battery capacity.
+                                    else:  # remaining PV generation is larger than the battery charging power.
+                                        B_SOC[i + 1] = B_SOC[i] + B_charge  # increase battery capacity by battery charging power.
+                                        PV_step_r = PV_step_r - B_charge  # export remaining PV generation after charging battery to the grid.
+                                else:  # remaining capacity is less than or equal to the battery charging power.
+                                    if PV_step_r >= (B_cap - B_SOC[i]):  # if remaining pv generation is greater than or equal to remaining battery capacity.
+                                        B_SOC[i + 1] = B_cap  # increase battery SOC to maximum charge.
+                                        PV_step_r = PV_step_r - (B_cap - B_SOC[i])  # export remaining PV generation after fully charging battery.
+                                    else:  # remaining pv generation is less than remaining battery capacity.
+                                        B_SOC[i + 1] = B_SOC[i] + PV_step_r  # increase battery SOC by remaining PV generation.
+                            else:  # battery is full.
+                                PV_step_r = PV_step_r  # export remaining pv generation.
+                        else:  # pv production is less than the electricity demand.
+                            E_step_r = E_step - PV_step  # remaining electricity demand after using all pv generation.
+                            PV_step_r = 0  # no remaining pv generation.
+                            if B_SOC[i] > 0:  # if battery soc is greater than zero.
+                                if B_SOC[i] >= B_discharge:  # if remaining battery capacity availability is larger than or equal to the battery discharge power.
+                                    if E_step_r <= B_discharge:  # if remaining electricity demand is less or equal to the battery discharge power.
+                                        B_SOC[i + 1] = B_SOC[i] - E_step_r  # reduce battery SOC by battery discharge power.
+                                        E_step_r = 0  # remaining electricity demand has been met with battery discharge power.
+                                    else:  # discharge battery power is too small to meet electricity demand.
+                                        E_step_r = E_step_r - B_discharge  # subtract battery discharge power from remaining electricity demand.
+                                        B_SOC[i + 1] = B_SOC[i] - B_discharge  # reduce battery SOC by battery discharge power.
+                                        GIE[i] = GIE[i] + E_step_r  # import electricity for remaining electricity demand and add to imported electricity demand for time step.
+                                        E_step_r = 0  # electricity demand has been met
+                                else:  # battery state of charge is less than the battery discharge power.
+                                    if E_step_r >= B_SOC[i]:  # if electricity demand is greater than or equal to the battery state of charge.
+                                        E_step_r = E_step_r - B_SOC[i]  # reduce remaining electricity demand by battery state of charge.
+                                        B_SOC[i + 1] = 0  # battery SOC is zero.
+                                        GIE[i] = GIE[i] + E_step_r  # import electricity to meet remaining electricity demand and add to imported electricity demand for time step.
+                                        E_step_r = 0  # remaining electricity demand has been met.
+                                    else:  # electricity demand is less than the battery state of charge.
+                                        B_SOC[i + 1] = B_SOC[i] - E_step_r  # reduce battery state of charge by remaining electricity demand.
+                                        E_step_r = 0  # remaining electricity demand has been met.
+                            else:  # no battery charge available.
+                                GIE[i] = GIE[i] + E_step_r  # import electricity to meet the rest of the demand.
+                                E_step_r = 0  # electricity demand has been met.
+
+                    elif B_SOC[i] > 0:  # else if battery state of charge is greater than zero.
+                        PV_step_r = 0  # set remaining PV generation to zero.
+                        if B_SOC[i] >= B_discharge:  # if remaining battery capacity availability is larger than or equal to the battery discharge power.
+                            if E_step <= B_discharge:  # if remaining electricity demand is less or equal to the battery discharge power.
+                                B_SOC[i + 1] = B_SOC[i] - E_step  # reduce battery SOC by battery discharge power.
+                                E_step_r = 0  # remaining electricity demand has been met with battery discharge power.
+                            else:  # discharge battery power is too small to meet electricity demand.
+                                E_step_r = E_step - B_discharge  # subtract battery discharge power from remaining electricity demand.
+                                B_SOC[i + 1] = B_SOC[i] - B_discharge  # reduce battery SOC by battery discharge power.
+                                GIE[i] = GIE[i] + E_step_r  # import electricity for remaining electricity demand and add to imported electricity demand for time step.
+                                E_step_r = 0  # electricity demand has been met
+                        else:  # battery state of charge is less than the battery discharge power.
+                            if E_step >= B_SOC[i]:  # if electricity demand is greater than or equal to the battery state of charge.
+                                E_step_r = E_step - B_SOC[i]  # reduce remaining electricity demand by battery state of charge.
+                                B_SOC[i + 1] = 0  # battery SOC is zero.
+                                GIE[i] = GIE[i] + E_step_r  # import electricity to meet remaining electricity demand and add to imported electricity demand for time step.
+                                E_step_r = 0  # remaining electricity demand has been met.
+                            else:  # electricity demand is less than the battery state of charge.
+                                B_SOC[i + 1] = B_SOC[i] - E_step  # reduce battery state of charge by remaining electricity demand.
+                                E_step_r = 0  # remaining electricity demand has been met.
+
+                    else:  # no battery charge or pv generation available.
+                        GIE[i] = GIE[i] + E_step  # add electricity demand to imported electricity
+                        E_step_r = 0  # electricity demand has been met by imported electricity
+                        PV_step_r = 0  # remaining PV generation is zero.
+
+                else:  # no electricity demand
+                    if PV_step > 0:  # if pv generation is greater than zero.
+                        if B_SOC[i] < B_cap:  # if battery is not full.
+                            if (B_cap - B_SOC[i]) >= B_charge:  # if remaining battery capacity availability is greater than battery charging power.
+                                if PV_step >= B_charge:  # if pv generation is larger than or equal to the battery charging power.
+                                    B_SOC[i + 1] = B_SOC[i] + B_charge  # increase battery state of charge by battery charging power.
+                                    PV_step_r = PV_step - B_charge  # export remaining pv generation after battery charging to the grid.
+                                else:
+                                    B_SOC[i + 1] = B_SOC[i] + PV_step  # charge battery with pv generation.
+                                    PV_step_r = 0  # remaining PV generation is zero.
+                            else:  # remaining battery capacity is less than charging power.
+                                if PV_step >= (B_cap - B_SOC[i]):  # if pv generation is larger than battery capacity availability.
+                                    B_SOC[i + 1] = B_cap  # battery is fully charged.
+                                    PV_step_r = PV_step - (B_cap - B_SOC[i])  # remaining pv generation after battery charging is exported to the grid.
+                                else:  # pv generation is less than the available battery capacity.
+                                    B_SOC[i + 1] = B_SOC[i] + PV_step  # charge battery from pv generation.
+                                    PV_step_r = 0  # remaining PV generation is zero.
+                        else:  # battery is full
+                            PV_step_r = PV_step  # pv generation is exported to the grid.
+                    else:  # no pv generation.
+                        PV_step_r = 0  # remaining pv generation is zero..
+
+                if E_step_r == 0:
+                    print('all good with E for this time step bro')
+                else:
+                    print('something wrong with the E for this time step bro')
+                    raise ValueError
+
                 ## determine how to meet DHW demand with imported electricity and ST generation
                 ## and what happens with excess ST generation.
 
@@ -121,24 +231,24 @@ def Optimiz(HC, E , DHW, ST, PV, B_cap, B_charge, B_discharge, TS_size, TS_leak,
                                 else:
                                     DHW_step_r = DHW_step_r - TS_SOC[i]  # reduce remaining DHW consumption by thermal storage level.
                                     TS_SOC[i+1] = 0  # set thermal storage level to zero for next time step.
-                                    if PV_step > 0:  # if PV production is greater than zero.
-                                        if PV_step >= DHW_step_r:  # if PV generation is greater or equal to the remaining DHW consumption.
-                                            PV_step_r = PV_step - DHW_step_r  # Remaining PV generation
+                                    if PV_step_r > 0:  # if remaining PV production is greater than zero.
+                                        if PV_step_r >= DHW_step_r:  # if remaining PV generation is greater or equal to the remaining DHW consumption.
+                                            PV_step_r = PV_step_r - DHW_step_r  # Remaining PV generation
                                             DHW_step_r = 0  # DHW consumption has been met.
                                         else:
-                                            DHW_step_r = DHW_step_r - PV_step  # remaining DHW consumption
-                                            PV_step_r = 0  # PV generation is zero.
+                                            DHW_step_r = DHW_step_r - PV_step_r  # remaining DHW consumption
+                                            PV_step_r = 0  # remaining PV generation is zero.
                                             GIE[i] = DHW_step_r  # remaining DHW consumption is met by imported electricity (kWh)
                                             DHW_step_r = 0  # DHW consumption has been met.
                                     else:
                                         GIE[i] = DHW_step_r  # DHW demand comes from imported electricity (kWh)
                                         DHW_step_r = 0  # DHW consumption has been met.
-                            elif PV_step > 0:
-                                if PV_step >= DHW_step_r:  # if PV generation is larger than or equal to domestic hot water consumption.
-                                    PV_step_r = PV_step - DHW_step_r  # Remaining PV generation is replaced in PV generation for time step.
+                            elif PV_step_r > 0:  # if remaining pv generation is greater than zero.
+                                if PV_step_r >= DHW_step_r:  # if remaining PV generation is larger than or equal to domestic hot water consumption.
+                                    PV_step_r = PV_step_r - DHW_step_r  # Remaining PV generation is replaced in PV generation for time step.
                                     DHW_step_r = 0  # DHW consumption has been met.
                                 else:
-                                    DHW_step_r = DHW_step_r - PV_step  # remaining DHW consumption
+                                    DHW_step_r = DHW_step_r - PV_step_r  # remaining DHW consumption
                                     PV_step_r = 0  # PV generation is zero.
                                     GIE[i] = DHW_step_r  # remaining DHW consumption is met by imported electricity (kWh)
                                     DHW_step_r = 0  # DHW consumption has been met.
@@ -153,12 +263,12 @@ def Optimiz(HC, E , DHW, ST, PV, B_cap, B_charge, B_discharge, TS_size, TS_leak,
                         else:
                             DHW_step_r = DHW_step - TS_SOC[i]  # remaining DHW consumption
                             TS_SOC[i+1] = 0  # thermal storage level is set to zero for next time step.
-                            if PV_step >= 0:  # if PV production is greater than zero.
-                                if PV_step >= DHW_step_r:  # if PV generation is greater or equal to the remaining DHW consumption.
-                                    PV_step_r = PV_step - DHW_step_r  # Remaining PV generation
+                            if PV_step_r >= 0:  # if remaining PV production is greater than zero.
+                                if PV_step_r >= DHW_step_r:  # if PV generation is greater or equal to the remaining DHW consumption.
+                                    PV_step_r = PV_step_r - DHW_step_r  # Remaining PV generation
                                     DHW_step_r = 0  # DHW consumption has been met.
                                 else:
-                                    DHW_step_r = DHW_step_r - PV_step  # remaining DHW consumption
+                                    DHW_step_r = DHW_step_r - PV_step_r  # remaining DHW consumption
                                     PV_step_r = 0  # PV generation is zero.
                                     GIE[i] = DHW_step_r  # remaining DHW consumption is met by imported electricity (kWh)
                                     DHW_step_r = 0  # DHW consumption has been met.
@@ -166,9 +276,9 @@ def Optimiz(HC, E , DHW, ST, PV, B_cap, B_charge, B_discharge, TS_size, TS_leak,
                                 GIE[i] = DHW_step_r  # DHW demand comes from imported electricity (kWh)
                                 DHW_step_r = 0  # DHW consumption has been met.
 
-                    elif PV_step > 0:  # if PV production is greater than zero.
-                        if PV_step >= DHW_step:
-                            PV_step_r = PV_step - DHW_step  # Remaining PV generation is replaced in PV generation for time step.
+                    elif PV_step_r > 0:  # if remaining PV production is greater than zero.
+                        if PV_step_r >= DHW_step:
+                            PV_step_r = PV_step_r - DHW_step  # Remaining PV generation is replaced in PV generation for time step.
                             DHW_step_r = 0  # DHW consumption has been met.
                         else:
                             DHW_step_r = DHW_step_r - PV_step  # remaining DHW consumption
@@ -200,111 +310,13 @@ def Optimiz(HC, E , DHW, ST, PV, B_cap, B_charge, B_discharge, TS_size, TS_leak,
                     print('something wrong with the DHW for this time step bro')
                     raise ValueError
 
+                GEE[i] = PV_step_r  # export remaining PV generation
+
                 TS_Litre_step = (3600 * TS_SOC[i+1]) / (4.2 * (T_outlet - T_inlet))  # determine litres of hot water in thermal storage (litres)
                 TS_leak_kWh = (TS_leak * TS_Litre_step) / 1000  # energy leakage from hot water tank (kWh)
                 TS_SOC[i+1] = TS_SOC[i+1] - TS_leak_kWh  # reduce thermal store state by the energy leakage (kWh).
 
-                ## determine how to meet E demand and the imported and exported electricity.
 
-                if PV_step_r == 'x':
-                    PV_step = PV_step
-                else:
-                    PV_step = PV_step_r
-
-                if E_step > 0:  # if electricity demand is greater than zero.
-                    if PV_step > 0:  # if pv production is greater than zero.
-                        if PV_step >= E_step:  # if pv production is greater or equal to electricity demand.
-                            PV_step_r = PV_step - E_step  # subtract electric demand to get remaining pv generation.
-                            E_step_r = 0  # electricity demand has been met with pv generation.
-                            if B_SOC[i] < B_cap:  # if battery state of charge is lower than battery maximum capacity.
-                                if (B_cap - B_SOC[i]) > B_charge:  # if remaining capacity is greater than the battery charging power.
-                                    if PV_step_r <= B_charge:  # if remaining PV generation is less than or equal to the battery charging power.
-                                        B_SOC[i+1] = B_SOC[i] + PV_step_r  # add PV generation to battery capacity.
-                                    else:  # remaining PV generation is larger than the battery charging power.
-                                        B_SOC[i+1] = B_SOC[i] + B_charge  # increase battery capacity by battery charging power.
-                                        GEE[i] = PV_step_r - B_charge  # export remaining PV generation after charging battery to the grid.
-                                else:  # remaining capacity is less than or equal to the battery charging power.
-                                    if PV_step_r >= (B_cap - B_SOC[i]):  # if remaining pv generation is greater than or equal to remaining battery capacity.
-                                        B_SOC[i+1] = B_cap  # increase battery SOC to maximum charge.
-                                        GEE[i] = PV_step_r - (B_cap - B_SOC[i])  # export remaining PV generation after fully charging battery.
-                                    else:  # remaining pv generation is less than remaining battery capacity.
-                                        B_SOC[i+1] = B_SOC[i] + PV_step_r  # increase battery SOC by remaining PV generation.
-                            else:  # battery is full.
-                                GEE[i] = PV_step_r  # export remaining pv generation.
-                        else:  # pv production is less than the electricity demand.
-                            E_step_r = E_step - PV_step  # remaining electricity demand after using all pv generation.
-                            if B_SOC[i] > 0:  # if battery soc is greater than zero.
-                                if B_SOC[i] >= B_discharge:  # if remaining battery capacity availability is larger than or equal to the battery discharge power.
-                                    if E_step_r <= B_discharge:  # if remaining electricity demand is less or equal to the battery discharge power.
-                                        B_SOC[i+1] = B_SOC[i] - E_step_r  # reduce battery SOC by battery discharge power.
-                                        E_step_r = 0  # remaining electricity demand has been met with battery discharge power.
-                                    else:  # discharge battery power is too small to meet electricity demand.
-                                        E_step_r = E_step_r - B_discharge  # subtract battery discharge power from remaining electricity demand.
-                                        B_SOC[i+1] = B_SOC[i] - B_discharge  # reduce battery SOC by battery discharge power.
-                                        GIE[i] = GIE[i] + E_step_r  # import electricity for remaining electricity demand and add to imported electricity demand for time step.
-                                        E_step_r = 0  # electricity demand has been met
-                                else:  # battery state of charge is less than the battery discharge power.
-                                    if E_step_r >= B_SOC[i]:  # if electricity demand is greater than or equal to the battery state of charge.
-                                        E_step_r = E_step_r - B_SOC[i]  # reduce remaining electricity demand by battery state of charge.
-                                        B_SOC[i+1] = 0  # battery SOC is zero.
-                                        GIE[i] = GIE[i] + E_step_r  # import electricity to meet remaining electricity demand and add to imported electricity demand for time step.
-                                        E_step_r = 0  # remaining electricity demand has been met.
-                                    else: # electricity demand is less than the battery state of charge.
-                                        B_SOC[i+1] = B_SOC[i] - E_step_r  # reduce battery state of charge by remaining electricity demand.
-                                        E_step_r = 0  # remaining electricity demand has been met.
-                            else:  # no battery charge available.
-                                GIE[i] = GIE[i] + E_step_r  # import electricity to meet the rest of the demand.
-                                E_step_r = 0  # electricity demand has been met.
-
-                    elif B_SOC[i] > 0:  # else if battery state of charge is greater than zero.
-                        if B_SOC[i] >= B_discharge:  # if remaining battery capacity availability is larger than or equal to the battery discharge power.
-                            if E_step <= B_discharge:  # if remaining electricity demand is less or equal to the battery discharge power.
-                                B_SOC[i+1] = B_SOC[i] - E_step  # reduce battery SOC by battery discharge power.
-                                E_step_r = 0  # remaining electricity demand has been met with battery discharge power.
-                            else:  # discharge battery power is too small to meet electricity demand.
-                                E_step_r = E_step - B_discharge  # subtract battery discharge power from remaining electricity demand.
-                                B_SOC[i+1] = B_SOC[i] - B_discharge  # reduce battery SOC by battery discharge power.
-                                GIE[i] = GIE[i] + E_step_r  # import electricity for remaining electricity demand and add to imported electricity demand for time step.
-                                E_step_r = 0  # electricity demand has been met
-                        else:  # battery state of charge is less than the battery discharge power.
-                            if E_step >= B_SOC[i]:  # if electricity demand is greater than or equal to the battery state of charge.
-                                E_step_r = E_step - B_SOC[i]  # reduce remaining electricity demand by battery state of charge.
-                                B_SOC[i+1] = 0  # battery SOC is zero.
-                                GIE[i] = GIE[i] + E_step_r  # import electricity to meet remaining electricity demand and add to imported electricity demand for time step.
-                                E_step_r = 0  # remaining electricity demand has been met.
-                            else:  # electricity demand is less than the battery state of charge.
-                                B_SOC[i+1] = B_SOC[i] - E_step  # reduce battery state of charge by remaining electricity demand.
-                                E_step_r = 0  # remaining electricity demand has been met.
-
-                    else:  # no battery charge or pv generation available.
-                        GIE[i] = GIE[i] + E_step  # add electricity demand to imported electricity
-                        E_step_r = 0  # electricity demand has been met by imported electricity
-
-                else: # no electricity demand
-                    if PV_step > 0:  # if pv generation is greater than zero.
-                        if B_SOC[i] < B_cap:  # if battery is not full.
-                            if (B_cap - B_SOC[i]) >= B_charge:  # if remaining battery capacity availability is greater than battery charging power.
-                                if PV_step >= B_charge: # if pv generation is larger than or equal to the battery charging power.
-                                    B_SOC[i+1] = B_SOC[i] + B_charge  # increase battery state of charge by battery charging power.
-                                    GEE[i] = PV_step - B_charge  # export remaining pv generation after battery charging to the grid.
-                                else:
-                                    B_SOC[i+1] = B_SOC[i] + PV_step  # charge battery with pv generation.
-                            else:  # remaining battery capacity is less than charging power.
-                                if PV_step >= (B_cap - B_SOC[i]):  # if pv generation is larger than battery capacity availability.
-                                    B_SOC[i+1] = B_cap  # battery is fully charged.
-                                    GEE[i] = PV_step - (B_cap - B_SOC[i])  # remaining pv generation after battery charging is exported to the grid.
-                                else:  # pv generation is less than the available battery capacity.
-                                    B_SOC[i+1] = B_SOC[i] + PV_step  # charge battery from pv generation.
-                        else:  # battery is full
-                            GEE[i] = PV_step  # pv generation is exported to the grid.
-                    else:  # no pv generation.
-                        GEE[i] = GEE[i]  # exported electricity remains the same.
-
-                if E_step_r == 0:
-                    print('all good with E for this time step bro')
-                else:
-                    print('something wrong with the E for this time step bro')
-                    raise ValueError
 
             GIE_tot = GIE.sum()  # sum together imported electricity array
             GEE_tot = GEE.sum()  # sum together exported electricity array
@@ -361,18 +373,18 @@ def Optimiz(HC, E , DHW, ST, PV, B_cap, B_charge, B_discharge, TS_size, TS_leak,
         IRR = round((npf.irr(Cash_flow) * 100), 2)  # calculate IRR (%)
         NPV = round((npf.npv(d_rate, Cash_flow) / 1000), 3)  # calculate NPV (£ 000's)
 
-        CO2 = (Energy_sum - GIE_years[0]) * Fuel['CO2e Emissions (kgCO2e/kWh)']['Grid Electricity']
+        CO2 = GIE_years[0] * Fuel['CO2e Emissions (kgCO2e/kWh)']['Grid Electricity']
 
+        PV_gen = PV_c.sum()  # sum together PV generation
 
-
-        base_results = [PV_iteration, ST_iteration, IRR, NPV, GIE_tot, GEE_tot, ARC, CC, CO2,
+        base_results = [PV_iteration, ST_iteration, IRR, NPV, GIE_tot, PV_gen, GEE_tot, ARC, CC, CO2,
                         ST_waste_tot]  # collate data into list
         numEl = len(base_results)  # find length of list
         newRow = pd.DataFrame(np.array(base_results).reshape(1, numEl),
                               columns=list(Results.columns))  # alter numpy array to collate with Fabric_type dataframe
         Results = Results.append(newRow, ignore_index=True)
 
-
+    Results.index.names = ['j']
     Results.to_csv('Results.csv')
 
     return Results

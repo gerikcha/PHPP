@@ -393,7 +393,7 @@ def solver(TCAf, TCAc, TCAh, dt, u, u_c, t, Tisp, DeltaT, DeltaBlind, Kpc, Kph, 
     y_exp = Cc @ temp_exp + Dc @ u_ss
     y_imp = Cc @ temp_imp + Dc @ u_ss
 
-    fig, axs = plt.subplots(2, 1)
+    fig, axs = plt.subplots(2, 1, figsize=(12, 6))
     # axs[0].plot(t_ss / 3600, y_exp.T, t_ss / 3600, y_imp.T)
     # axs[0].set(ylabel='$T_i$ [°C]', title='Step input: To = 1°C')
 
@@ -434,23 +434,25 @@ def solver(TCAf, TCAc, TCAh, dt, u, u_c, t, Tisp, DeltaT, DeltaBlind, Kpc, Kph, 
             qHVAC[k + 1] = 0
 
     # plot indoor and outdoor temperature
-    axs[0].plot(t / 3600, y, label='$T_{indoor}$')
-    axs[0].plot(t / 3600, rad_surf_tot['temperature'], label='$T_{outdoor}$')
+    axs[0].plot(t / 3600, rad_surf_tot['temperature'], label='$T_{outdoor}$', color='blue')
     axs[0].set(xlabel='Time [h]',
-               ylabel='Temperatures [°C]',
-               title='Simulation for weather')
+               ylabel='Temperature [°C]')
     axs[0].legend(loc='upper right')
+    axs[0].set_ylim(-10, 30)
+    axs[0].grid(axis='y')
+    axs[0].set_yticks(np.arange(-10,35,5))
 
     # plot total solar radiation and HVAC heat flow
     del rad_surf_tot['temperature']
     Φt = rad_surf_tot.sum(axis=1)
-    axs[1].plot(t / 3600, qHVAC, label='$q_{HVAC}$')
-    axs[1].plot(t / 3600, Φt, label='$Φ_{total}$')
+    axs[1].plot(t / 3600, Φt, label='$S$', color='orange')
     axs[1].set(xlabel='Time [h]',
-               ylabel='Heat flows [W]')
+               ylabel='Solar irradiation [W]')
     axs[1].legend(loc='upper right')
-    plt.ylim(-1500, 6000)
+    axs[1].set_ylim(0, max(Φt))
+    axs[1].grid(axis='y')
     fig.tight_layout()
+    fig.savefig('Climate Data.png', bbox_inches='tight')
 
     plt.show()
 

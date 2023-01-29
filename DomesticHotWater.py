@@ -43,7 +43,7 @@ def DoHoWa(PV, T_inlet, T_outlet):
     use_kwh = np.zeros((len(DHW_App)), dtype=float)  # convert dhw consumption float to series with length of DHW_App.
 
     for i in range(0, len(DHW_App)):
-        use_l = DHW_App['Usage (L/hr)'][i]  # appliance usage in L/hr
+        use_l = DHW_App['Usage (L/hr)'][i]  # appliance usage in kg/hr
         use_E = 4.2 * (T_outlet - T_inlet) * use_l  # appliance usage in kJ/hr
         use_kwh[i] = use_E * (1/3600)  # appliance usage in kWh
 
@@ -206,7 +206,7 @@ def DoHoWa(PV, T_inlet, T_outlet):
                         Sun_times = pd.to_datetime(Sun_times, format='%H:%M:%S')  # convert start times into datetime.
                         Steps_period = int((pd.Timedelta(Sun_times[ind+1] - Sun_times[ind]).seconds / 3600.0))  # determine number of time steps between start and end time of period.
                         rand_time = random.randint(0, Steps_period)  # generate random start time within the time period.
-                        DHW[app][i+rand_time] = use_kwh  # add appliance consumption to DHW dataframe (kWh).
+                        DHW[app][i+(rand_time-1)] = use_kwh  # add appliance consumption to DHW dataframe (kWh).
                     else:
                         DHW[app][i] = DHW[app][i]
             else:

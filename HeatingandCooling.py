@@ -24,7 +24,7 @@ import copy
 import dm4bem
 import HeatConsumption
 
-def HC(PV_data):
+def HC(PV_data, ST):
 
     ## import and create dataframe for fabric types.
 
@@ -179,7 +179,7 @@ def HC(PV_data):
 
     Verif = pd.read_excel('PHPP_EN_V10.3_Variants_Example.xlsm', sheet_name='Verification',
                             header=None, usecols='E:N')  # import verification data
-    Kpf = 1500  # define controller sensitivity
+    Kpf = 500  # define controller sensitivity
     V_dot = IA.loc[67, 13] / 3600  # volume flow rate in building, m3/s.
     T_heating = int(Verif.loc[27, 10])  # temperature, C
     TCd.update({str(1): Element_Types.ventilation(
@@ -350,6 +350,8 @@ def HC(PV_data):
 
     PV_data = PV_data[len_diff:]
 
+    ST = ST[len_diff:]
+
     HC = pd.DataFrame(index=PV_data.index)
 
     HC['Heating (kWh)'] = H.tolist()
@@ -361,4 +363,4 @@ def HC(PV_data):
     # print('Maximum building heat loss coefficient:', qHVAC_bc_max, 'W/K')
     # print('Maximum building heat loss:', Qmax, 'kW')
 
-    return HC
+    return HC, PV_data, ST

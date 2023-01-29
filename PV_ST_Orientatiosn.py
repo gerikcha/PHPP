@@ -13,11 +13,11 @@ from matplotlib import pyplot as plt
 def PV_ST():
     # define dimensions of the roof and pv and st modules
     w_roof = 10  # width of available roof area (m)
-    h_roof = 10  # height of available roof area (m)
-    h_pv = 1.5  # height of PV module (m)
-    w_pv = 1  # width of PV module (m)
-    h_st = 1  # height of ST module (m)
-    w_st = 1.5  # width of ST module (m)
+    h_roof = 7.28  # height of available roof area (m)
+    h_pv = 2.08  # height of PV module (m)
+    w_pv = 1.03  # width of PV module (m)
+    h_st = 1.73  # height of ST module (m)
+    w_st = 1.12  # width of ST module (m)
     pv_st_gap = 0  # gap between PV and ST modules (m)
 
     # define constraints of pv and st modules on the roof
@@ -141,4 +141,6 @@ def PV_ST():
     # plt.plot(PV_data.index.values, S[:, 1])
     # plt.show()
 
+    PV_data = PV_data[:-1]
+    S = S[:-1]
     return S, PV_data, Ac, pv_cap_tot
